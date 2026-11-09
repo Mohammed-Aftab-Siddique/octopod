@@ -1,0 +1,22 @@
+# Optional PostgreSQL for the legacy import/export scripts only.
+# The deployed application uses Cloudflare D1; local Worker development uses
+# Miniflare's local D1 database (no container required).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: octopod
+      POSTGRES_PASSWORD: octopod
+      POSTGRES_DB: octopod
+    ports:
+      - "5432:5432"
+    volumes:
+      - octopod_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U octopod -d octopod"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  octopod_pgdata:

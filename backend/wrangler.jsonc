@@ -1,0 +1,45 @@
+{
+  // Single Worker: Static Assets serves the SPA, /api/* runs FastAPI via workers.asgi.
+  // Build the frontend first: `cd frontend && npm run build`.
+  "name": "octopod",
+  // Keeping the entrypoint under `src/` limits Wrangler's module root to the
+  // application package instead of bundling `.venv`, tests, scripts, and caches.
+  "main": "src/worker.py",
+  "compatibility_date": "2026-11-08",
+  "compatibility_flags": ["python_workers"],
+  "assets": {
+    "directory": "../frontend/dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "octopod",
+      "database_id": "d6196f3a-badd-4055-9c45-a6a0dfcd75b5",
+      "migrations_dir": "migrations/d1"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CRYPTO", "class_name": "CryptoBox" },
+      { "name": "RATE_LIMITER", "class_name": "RateLimiter" },
+      { "name": "GENERATOR", "class_name": "Generator" },
+      { "name": "RENDERER", "class_name": "Renderer" }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CryptoBox", "RateLimiter", "Generator", "Renderer"]
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "production",
+    "COOKIE_SECURE": "true",
+    "AUTO_CREATE_TABLES": "false",
+    "SEED_DEMO": "false",
+    "ALLOWED_ORIGINS": "https://octopod.aftabsd786.workers.dev"
+  }
+}

@@ -1,0 +1,6 @@
+ENVIRONMENT=development
+SECRET_KEY=dev-secret-change-me
+COOKIE_SECURE=false
+AUTO_CREATE_TABLES=false
+SEED_DEMO=false
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
