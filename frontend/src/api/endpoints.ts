@@ -77,6 +77,7 @@ export const rostersApi = {
     api.get<RosterSummary[]>(`/rosters?year=${year}&month=${month}`),
   create: (year: number, month: number) => api.post<RosterGrid>("/rosters", { year, month }),
   get: (id: number) => api.get<RosterGrid>(`/rosters/${id}`),
+  delete: (id: number) => api.delete<void>(`/rosters/${id}`),
   patchAssignments: (
     id: number,
     assignments: { employee_id: number; date: string; status_code: string }[],

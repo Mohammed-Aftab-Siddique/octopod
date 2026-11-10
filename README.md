@@ -172,12 +172,13 @@ Generation is deterministic backend logic (no external optimiser):
 3. Each employee keeps a fixed primary shift for the month (`default_shift`,
    or a balanced shift derived from `rotation_offset`). Their two consecutive
    week-off days come from `week_off_start_day` in the employee record.
-4. Staffing requirements for the weekday drive coverage. The generator can pull
-   employees out of a planned day off (or add a day off), and move employees to
-   another shift only when the fixed-shift mix cannot cover it, while tracking
-   fairness counters.
-5. Shortages are returned for administrator review. Generated rosters are
-   always drafts and require explicit publish approval.
+4. Staffing requirements for the weekday drive coverage. The generator can add
+   a day off and move employees to another shift when the fixed-shift mix cannot
+   cover it, while tracking fairness counters. It never recalls an employee from
+   their planned week-off pair.
+5. Shortages are returned for administrator review when requirements exceed the
+   people available after leave, comp-off, unavailable dates, and week-offs.
+   Generated rosters are always drafts and require explicit publish approval.
 
 Generation never auto-publishes. Publishing archives the previously published
 version for the month and makes the new version visible to employees.
@@ -195,7 +196,7 @@ All endpoints are under `/api/v1`.
 - `GET /reference/shift-statuses`
 - `GET|PUT /reference/staffing-requirements`
 - `GET|POST /reference/holidays`, `DELETE /reference/holidays/{id}`
-- `GET|POST /rosters`, `GET /rosters/{id}`,
+- `GET|POST /rosters`, `GET|DELETE /rosters/{id}`,
   `PATCH /rosters/{id}/assignments`, `POST /rosters/{id}/generate`,
   `POST /rosters/{id}/publish`, `GET /rosters/{id}/export.png`
 - `GET /me/roster?year=&month=`

@@ -6,9 +6,11 @@ is unset). Week-offs are the employee's chosen pair of consecutive weekdays
 (``week_off_start_day`` and the following day).
 
 Staffing requirements are the correction layer. They can add an extra day off
-or recall an employee from a planned day off, and they move employees between
-shifts when the fixed-shift mix does not cover a shift. Fairness counters keep
-these corrections deterministic and balanced.
+and they move employees between shifts when the fixed-shift mix does not cover
+a shift. An employee's planned week-off pair is never recalled: if requirements
+ask for more people than are available, the gap is reported as a shortage so
+the administrator can adjust staffing or the week-off configuration. Fairness
+counters keep these corrections deterministic and balanced.
 
 The implementation is intentionally a straightforward heuristic rather than an
 optimiser. It is deterministic for identical inputs and reports shortages
@@ -342,22 +344,9 @@ def compute_roster(
             pool.remove(candidate)
             off.add(candidate.id)
 
-        # Too few people available: recall people from their planned day off,
-        # preferring employees who have already had the most days off.
-        while len(pool) < required_total:
-            candidates = [employee for employee in eligible if employee.id in off]
-            if not candidates:
-                break
-            recalled = max(
-                candidates,
-                key=lambda employee: (
-                    off_counts[employee.id],
-                    employee.rotation_offset,
-                    employee.id,
-                ),
-            )
-            off.discard(recalled.id)
-            pool.append(recalled)
+        # Too few people available: keep the planned week-off pair intact. The
+        # shortfall is reported below as a shortage instead of recalling an
+        # employee from their configured days off.
 
         assignments: dict[int, str] = {}
         unassigned = sorted(pool, key=lambda employee: employee.id)

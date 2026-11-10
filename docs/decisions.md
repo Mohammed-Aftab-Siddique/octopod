@@ -25,12 +25,14 @@ employee is created without an explicit pair, the start day defaults to
 recorded as availability; that picker only covers leave, comp-off, and
 unavailable dates.
 
-Staffing requirements are the correction layer: when coverage is short they
-can recall an employee from a planned day off, and when a shift is over-staffed
-they can add a day off or move an employee to another shift. Fairness counters
-keep those corrections deterministic and balanced. This matches the business
-roster: a person stays in their shift for the month and moves only for
-coverage.
+Staffing requirements are the correction layer: when a shift is over-staffed
+they can add a day off, and they can move an employee to another shift. A
+planned week-off pair is never recalled. When requirements ask for more people
+than are available after leave, comp-off, unavailable dates, and week-offs, the
+gap is reported as a shortage for the administrator to resolve. Fairness
+counters keep corrections deterministic and balanced. This matches the
+business roster: a person stays in their shift for the month, keeps their
+chosen week-offs, and moves only for coverage.
 
 ## 3. Holidays are per-month and use the `H` code
 

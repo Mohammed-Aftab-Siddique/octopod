@@ -266,6 +266,65 @@ def test_generated_roster_keeps_fixed_shift_and_rotates_days_off(client, seeded)
         assert counts["O"] > 0
 
 
+def test_generation_never_recalls_planned_week_off(client, seeded):
+    headers = login_headers(client, "admin@test.local", "Admin123!")
+    _set_requirements(client, headers, 1)
+    roster = _create_roster(client, headers)
+
+    # Put everyone off on the same weekend pair so coverage is impossible on
+    # those days. The generator must keep the week-off and report a shortage
+    # instead of recalling anybody.
+    for employee_id, _ in seeded["employees"]:
+        updated = client.patch(
+            f"/api/v1/employees/{employee_id}",
+            headers=headers,
+            json={"week_off_start_day": 5},
+        )
+        assert updated.status_code == 200, updated.text
+
+    generated = client.post(f"/api/v1/rosters/{roster['id']}/generate", headers=headers)
+    assert generated.status_code == 200, generated.text
+    result = generated.json()
+    assignments = result["roster"]["assignments"]
+
+    weekend_dates = {
+        day["date"]
+        for day in result["roster"]["days"]
+        if date.fromisoformat(day["date"]).weekday() in (5, 6)
+    }
+    assert weekend_dates
+    assert all(item["status_code"] == "O" for item in assignments if item["date"] in weekend_dates)
+    shortage_dates = {shortage["date"] for shortage in result["shortages"]}
+    assert weekend_dates <= shortage_dates
+
+
+def test_delete_roster_removes_assignments_and_history(client, seeded):
+    headers = login_headers(client, "admin@test.local", "Admin123!")
+    _set_requirements(client, headers, 1)
+    roster = _create_roster(client, headers)
+    generated = client.post(f"/api/v1/rosters/{roster['id']}/generate", headers=headers)
+    assert generated.status_code == 200, generated.text
+
+    deleted = client.delete(f"/api/v1/rosters/{roster['id']}", headers=headers)
+    assert deleted.status_code == 204, deleted.text
+
+    missing = client.get(f"/api/v1/rosters/{roster['id']}", headers=headers)
+    assert missing.status_code == 404
+
+    listed = client.get("/api/v1/rosters", headers=headers, params={"year": 2026, "month": 11})
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models.roster import GenerationRun, RosterAssignment
+
+    with get_sessionmaker()() as db:
+        assert db.scalar(select(RosterAssignment.id)) is None
+        assert db.scalar(select(GenerationRun.id)) is None
+
+
 def test_fixed_shift_is_used_and_validated(client, seeded):
     headers = login_headers(client, "admin@test.local", "Admin123!")
 

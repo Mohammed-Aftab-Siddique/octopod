@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ArrowLeft, CheckCircle2, Download, Sparkles, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Download, Sparkles, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
 import { rostersApi } from "@/api/endpoints";
@@ -32,13 +32,16 @@ interface PickerState {
 
 export function AdminRosterPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const rosterId = Number(id);
   const queryClient = useQueryClient();
   const queryKey = ["roster", rosterId];
   const [error, setError] = useState<string | null>(null);
   const [picker, setPicker] = useState<PickerState | null>(null);
   const [generation, setGeneration] = useState<GenerationResult | null>(null);
-  const [confirmAction, setConfirmAction] = useState<"generate" | "publish" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"generate" | "publish" | "delete" | null>(
+    null,
+  );
 
   const rosterQuery = useQuery({
     queryKey,
@@ -111,6 +114,17 @@ export function AdminRosterPage() {
     onError: (err) => setError(err instanceof ApiError ? err.message : "Unable to publish roster"),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => rostersApi.delete(rosterId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["rosters"] });
+      queryClient.removeQueries({ queryKey });
+      setConfirmAction(null);
+      navigate("/admin/rosters");
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "Unable to delete roster"),
+  });
+
   const downloadExport = async () => {
     const current = rosterQuery.data;
     if (!current) return;
@@ -175,6 +189,14 @@ export function AdminRosterPage() {
                 </Button>
               </>
             ) : null}
+            <Button
+              variant="destructive"
+              onClick={() => setConfirmAction("delete")}
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
+            </Button>
           </>
         }
       />
@@ -292,18 +314,30 @@ export function AdminRosterPage() {
         onOpenChange={(open) => {
           if (!open) setConfirmAction(null);
         }}
-        title={confirmAction === "publish" ? "Publish roster" : "Regenerate roster"}
+        title={
+          confirmAction === "publish"
+            ? "Publish roster"
+            : confirmAction === "delete"
+              ? "Delete roster"
+              : "Regenerate roster"
+        }
         description={
           confirmAction === "publish"
             ? "Publish this roster? Employees will see it immediately and the previously published version is archived."
-            : "Generate a new roster? This replaces the current draft assignments and keeps the roster unpublished."
+            : confirmAction === "delete"
+              ? "Delete this roster permanently? Its assignments and generation history will be removed. This cannot be undone."
+              : "Generate a new roster? This replaces the current draft assignments and keeps the roster unpublished."
         }
-        confirmLabel={confirmAction === "publish" ? "Publish" : "Generate"}
-        destructive={confirmAction === "publish"}
-        pending={generateMutation.isPending || publishMutation.isPending}
+        confirmLabel={
+          confirmAction === "publish" ? "Publish" : confirmAction === "delete" ? "Delete" : "Generate"
+        }
+        destructive={confirmAction === "publish" || confirmAction === "delete"}
+        pending={generateMutation.isPending || publishMutation.isPending || deleteMutation.isPending}
         onConfirm={() => {
           if (confirmAction === "publish") {
             publishMutation.mutate();
+          } else if (confirmAction === "delete") {
+            deleteMutation.mutate();
           } else if (confirmAction === "generate") {
             generateMutation.mutate();
           }

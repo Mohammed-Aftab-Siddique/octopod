@@ -151,6 +151,31 @@ async def get_or_create_draft(
     return period, True
 
 
+async def delete_period(db: Session, period: RosterPeriod, *, env=None) -> None:
+    """Permanently delete a roster version and its assignments/runs."""
+
+    if has_binding(env):
+        await d1_batch(
+            env,
+            [
+                (
+                    "DELETE FROM roster_assignments WHERE roster_period_id = ?",
+                    [period.id],
+                ),
+                (
+                    "DELETE FROM generation_runs WHERE roster_period_id = ?",
+                    [period.id],
+                ),
+                ("DELETE FROM roster_periods WHERE id = ?", [period.id]),
+            ],
+        )
+        db.expire_all()
+        return
+
+    db.delete(period)
+    db.commit()
+
+
 def get_published_period(db: Session, year: int, month: int) -> RosterPeriod | None:
     return db.scalar(
         select(RosterPeriod).where(

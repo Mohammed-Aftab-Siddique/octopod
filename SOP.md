@@ -395,13 +395,23 @@ A draft with no assignments cannot be published; the API returns
 > create a new draft for the month, regenerate or edit it, and publish the new
 > version. Employees then see the new version.
 
-### 9.5 Export
+### 9.5 Delete a roster
+
+1. Open the roster (draft, published, or archived version).
+2. Select **Delete** in the page header.
+3. Confirm in the **Delete roster** dialog.
+
+Deleting removes the roster version, all of its assignments, and its generation
+history. This cannot be undone. Deleting the currently published version means
+employees see no roster for that month until another version is published.
+
+### 9.6 Export
 
 Select **Export PNG** on any roster you can open. Administrators can export
 drafts, published versions, and archived versions. Employees can export only
 the currently published version.
 
-### 9.6 Version and status reference
+### 9.7 Version and status reference
 
 | Status | Meaning | Editable? | Visible to employees? |
 |---|---|---|---|
@@ -428,8 +438,10 @@ You do not need this to use the app, but it explains the output.
 - Staffing requirements are the correction layer:
   - If too many employees are available, the generator adds days off, choosing
     employees with the fewest days off so far.
-  - If too few are available, it recalls employees from their planned day off,
-    preferring those who have had the most days off.
+  - Planned week-offs are never recalled. If requirements ask for more people
+    than are available after leave, comp-off, unavailable dates, and week-offs,
+    the gap is reported as a staffing shortage. Reduce the requirement or
+    change the employee's week-off pair.
   - Employees keep their primary shift. They are moved to another shift only
     when the fixed-shift mix cannot cover a configured shift.
 - Ties are broken by primary-shift match, per-shift counts, total work counts,
@@ -471,6 +483,7 @@ heuristic, not an optimiser; always review the draft.
 |---|---|---|
 | **Publish** | Archives the previous published version; published roster becomes read-only and visible to employees | No direct undo; publish a new version |
 | **Generate / Regenerate** | Replaces **all** assignments in the draft | No undo; regenerate or edit manually |
+| **Delete roster** | Removes the roster version, its assignments, and generation history | No; recreate a draft if needed |
 | **Deactivate employee** | Blocks sign-in and revokes sessions; excludes them from new drafts | Yes, by reactivating, but history is not restored to drafts |
 | **Reset password** | Changes the password and revokes sessions | Yes, by resetting again |
 | **Delete holiday** | Removes it and its label | Only by re-adding it |

@@ -53,6 +53,18 @@ async def get_roster(roster_id: int, db: DbSession, admin: AdminUser) -> RosterG
     return service.build_grid(db, period)
 
 
+@router.delete("/rosters/{roster_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_roster(
+    roster_id: int,
+    request: Request,
+    db: DbSession,
+    admin: AdminUser,
+    _csrf: Annotated[None, Depends(csrf_protect)],
+) -> None:
+    period = service.get_period(db, roster_id)
+    await service.delete_period(db, period, env=request_env(request))
+
+
 @router.patch("/rosters/{roster_id}/assignments", response_model=RosterGrid)
 async def patch_assignments(
     roster_id: int,
