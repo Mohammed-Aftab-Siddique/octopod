@@ -10,19 +10,23 @@ The availability form accepts a date range, including past dates within the
 current month, so leave can be entered whenever it becomes known. Overlapping
 ranges update existing entries rather than creating duplicates.
 
-## 2. Shifts and week-offs rotate together
+## 2. Fixed shifts with rotating week-offs
 
-The generator uses a shared rotation cycle:
+Employees hold a **primary shift** for the roster period rather than rotating
+through every shift each day. The shift is `default_shift` when set; otherwise
+it is derived from `rotation_offset` (`working_shifts[offset % count]`) so a
+new team is balanced automatically.
 
-```text
-G → M → A → N → O → G → ...
-```
+Week-offs rotate independently. Each employee gets `weekly_off_days`
+consecutive days off per week (default `2`), starting on the weekday given by
+`rotation_offset % 7`. Different offsets therefore stagger the team's days off.
 
-Each employee has a `rotation_offset`. The preferred position for a given day
-is `(day_ordinal + rotation_offset) % 5`. Staffing requirements can pull an
-employee out of a rotating day off (or add one), but the default rotation keeps
-shifts and days off rotating together. Fairness counters make selection
-deterministic and balanced.
+Staffing requirements are the correction layer: when coverage is short they
+can recall an employee from a planned day off, and when a shift is over-staffed
+they can add a day off or move an employee to another shift. Fairness counters
+keep those corrections deterministic and balanced. This matches the business
+roster: a person stays in their shift for the month and moves only for
+coverage.
 
 ## 3. Holidays are per-month and use the `H` code
 

@@ -102,7 +102,7 @@ export function AdminEmployeeDetailPage() {
         title={employee?.full_name ?? "Employee"}
         description={
           employee
-            ? `${employee.employee_code} · ${employee.email} · rotation offset ${employee.rotation_offset}`
+            ? `${employee.employee_code} · ${employee.email} · ${employee.default_shift ?? "auto"} shift · ${employee.weekly_off_days} off/week · rotation offset ${employee.rotation_offset}`
             : "Loading employee details…"
         }
         actions={

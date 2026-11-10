@@ -20,6 +20,8 @@ export interface EmployeeInput {
   employee_code: string;
   full_name: string;
   email: string;
+  default_shift?: string | null;
+  weekly_off_days?: number;
   password?: string;
 }
 

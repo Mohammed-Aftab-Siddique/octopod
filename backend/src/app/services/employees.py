@@ -9,10 +9,28 @@ from app.core.security import hash_password_remote
 from app.db.d1 import d1_batch, has_binding, multi_row_insert, utcnow_text
 from app.models.availability import Availability, AvailabilityKind
 from app.models.employee import Employee
+from app.models.reference import ShiftStatus
 from app.models.user import Role, User, UserSession
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate
 
 DEFAULT_PASSWORD = "Employee123!"
+
+
+def _normalise_default_shift(db: Session, code: str | None) -> str | None:
+    """Return a canonical working shift code, or ``None`` for auto-assignment."""
+
+    if code is None:
+        return None
+    normalised = code.strip().upper()
+    shift_status = db.scalar(
+        select(ShiftStatus).where(func.lower(ShiftStatus.code) == normalised.lower())
+    )
+    if shift_status is None or not shift_status.is_working:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Shift {normalised} is not a working shift",
+        )
+    return shift_status.code
 
 
 async def _revoke_sessions(db: Session, user_id: int) -> None:
@@ -57,6 +75,8 @@ async def create_employee(
     rotation_offset = (
         payload.rotation_offset if payload.rotation_offset is not None else max_offset + 1
     )
+    default_shift = _normalise_default_shift(db, payload.default_shift)
+    weekly_off_days = payload.weekly_off_days if payload.weekly_off_days is not None else 2
     password_hash = await hash_password_remote(env, payload.password or DEFAULT_PASSWORD)
 
     if has_binding(env):
@@ -68,9 +88,18 @@ async def create_employee(
             (
                 "INSERT INTO employees "
                 "(employee_code, full_name, email, is_active, rotation_offset, "
-                "created_at, updated_at) "
-                "VALUES (?, ?, ?, 1, ?, ?, ?)",
-                [code, payload.full_name.strip(), email, rotation_offset, now, now],
+                "default_shift, weekly_off_days, created_at, updated_at) "
+                "VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)",
+                [
+                    code,
+                    payload.full_name.strip(),
+                    email,
+                    rotation_offset,
+                    default_shift,
+                    weekly_off_days,
+                    now,
+                    now,
+                ],
             ),
             (
                 "INSERT INTO users "
@@ -103,6 +132,8 @@ async def create_employee(
         full_name=payload.full_name.strip(),
         email=email,
         rotation_offset=rotation_offset,
+        default_shift=default_shift,
+        weekly_off_days=weekly_off_days,
     )
     db.add(employee)
     db.flush()
@@ -155,6 +186,10 @@ async def update_employee(
                 status_code=status.HTTP_409_CONFLICT, detail="Employee email already exists"
             )
 
+    default_shift: str | None = None
+    if "default_shift" in payload.model_fields_set:
+        default_shift = _normalise_default_shift(db, payload.default_shift)
+
     if has_binding(env):
         now = utcnow_text()
         employee_sets = ["updated_at = ?"]
@@ -171,6 +206,12 @@ async def update_employee(
         if payload.rotation_offset is not None:
             employee_sets.append("rotation_offset = ?")
             employee_params.append(payload.rotation_offset)
+        if "default_shift" in payload.model_fields_set:
+            employee_sets.append("default_shift = ?")
+            employee_params.append(default_shift)
+        if payload.weekly_off_days is not None:
+            employee_sets.append("weekly_off_days = ?")
+            employee_params.append(payload.weekly_off_days)
         if payload.is_active is not None:
             employee_sets.append("is_active = ?")
             employee_params.append(1 if payload.is_active else 0)
@@ -219,6 +260,10 @@ async def update_employee(
             employee.user.email = email
     if payload.rotation_offset is not None:
         employee.rotation_offset = payload.rotation_offset
+    if "default_shift" in payload.model_fields_set:
+        employee.default_shift = default_shift
+    if payload.weekly_off_days is not None:
+        employee.weekly_off_days = payload.weekly_off_days
     if payload.is_active is not None:
         employee.is_active = payload.is_active
         if employee.user:

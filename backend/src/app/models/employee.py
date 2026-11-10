@@ -23,6 +23,12 @@ class Employee(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     rotation_offset: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Primary shift code (e.g. "G"). ``None`` means derive it from
+    # ``rotation_offset`` at generation time.
+    default_shift: Mapped[str | None] = mapped_column(String(8), default=None, nullable=True)
+    # Consecutive days off per week. The starting weekday is staggered by
+    # ``rotation_offset``; staffing requirements can still override it.
+    weekly_off_days: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

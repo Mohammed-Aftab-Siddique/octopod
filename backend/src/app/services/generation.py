@@ -1,9 +1,14 @@
 """Deterministic, heuristic roster generation.
 
-The generator uses a shared rotation cycle (G -> M -> A -> N -> O) with a
-per-employee offset. Week-offs therefore rotate together with shifts. Staffing
-requirements and fairness counters can pull an employee out of rotation when
-the configured coverage cannot otherwise be met.
+Every employee holds a **fixed shift** for the roster period (their
+``default_shift``, or a balanced shift derived from ``rotation_offset`` when it
+is unset). Week-offs rotate independently: each employee gets a block of
+consecutive days off per week, staggered by ``rotation_offset``.
+
+Staffing requirements are the correction layer. They can add an extra day off
+or recall an employee from a planned day off, and they move employees between
+shifts when the fixed-shift mix does not cover a shift. Fairness counters keep
+these corrections deterministic and balanced.
 
 The implementation is intentionally a straightforward heuristic rather than an
 optimiser. It is deterministic for identical inputs and reports shortages
@@ -51,6 +56,8 @@ class ShortageRow(TypedDict):
 class GenerationEmployee:
     id: int
     rotation_offset: int
+    default_shift: str | None = None
+    weekly_off_days: int = 2
 
 
 @dataclass(frozen=True)
@@ -92,7 +99,12 @@ def load_generation_inputs(db: Session, period: RosterPeriod) -> GenerationInput
 
     first, last = month_bounds(period.year, period.month)
     employees = [
-        GenerationEmployee(id=employee.id, rotation_offset=employee.rotation_offset)
+        GenerationEmployee(
+            id=employee.id,
+            rotation_offset=employee.rotation_offset,
+            default_shift=employee.default_shift,
+            weekly_off_days=employee.weekly_off_days,
+        )
         for employee in db.scalars(
             select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.id)
         )
@@ -133,7 +145,12 @@ def inputs_to_payload(inputs: GenerationInputs) -> dict[str, Any]:
         "year": inputs.year,
         "month": inputs.month,
         "employees": [
-            {"id": employee.id, "rotation_offset": employee.rotation_offset}
+            {
+                "id": employee.id,
+                "rotation_offset": employee.rotation_offset,
+                "default_shift": employee.default_shift,
+                "weekly_off_days": employee.weekly_off_days,
+            }
             for employee in inputs.employees
         ],
         "statuses": [
@@ -160,7 +177,12 @@ def inputs_from_payload(payload: dict[str, Any]) -> GenerationInputs:
         year=int(payload["year"]),
         month=int(payload["month"]),
         employees=[
-            GenerationEmployee(id=int(item["id"]), rotation_offset=int(item["rotation_offset"]))
+            GenerationEmployee(
+                id=int(item["id"]),
+                rotation_offset=int(item["rotation_offset"]),
+                default_shift=item.get("default_shift"),
+                weekly_off_days=int(item.get("weekly_off_days", 2)),
+            )
             for item in payload.get("employees", [])
         ],
         statuses=[
@@ -196,6 +218,26 @@ def _default_requirements(working_codes: list[str], employee_count: int) -> dict
     return result
 
 
+def _fixed_shift(employee: GenerationEmployee, working_codes: list[str]) -> str:
+    """Resolve the employee's primary shift for the period."""
+
+    if employee.default_shift is not None and employee.default_shift in working_codes:
+        return employee.default_shift
+    return working_codes[employee.rotation_offset % len(working_codes)]
+
+
+def _prefers_day_off(employee: GenerationEmployee, current: date) -> bool:
+    """Whether the employee's weekly off block covers ``current``."""
+
+    days = employee.weekly_off_days
+    if days <= 0:
+        return False
+    if days >= 7:
+        return True
+    start = employee.rotation_offset % 7
+    return (current.weekday() - start) % 7 < days
+
+
 def compute_roster(
     inputs: GenerationInputs,
 ) -> tuple[list[AssignmentRow], list[ShortageRow], list[str]]:
@@ -209,11 +251,11 @@ def compute_roster(
         for status in inputs.statuses
         if status.is_working and status.code != HOLIDAY_CODE
     ]
-    cycle = [*working_codes, OFF_CODE]
-
     warnings: list[str] = []
     if not employees:
         return [], [], ["No active employees. Add employees before generating a roster."]
+    if not working_codes:
+        raise RuntimeError("No working shifts are configured")
     if OFF_CODE not in status_by_code:
         raise RuntimeError("The week-off status (O) is not configured")
     if HOLIDAY_CODE not in status_by_code:
@@ -279,24 +321,24 @@ def compute_roster(
             required = dict(configured.get(current.weekday(), {}))
         required = {code: count for code, count in required.items() if count > 0}
 
-        preferred = {
-            employee.id: cycle[(ordinal + employee.rotation_offset) % len(cycle)]
-            for employee in eligible
-        }
+        # Fixed shift for the period; days off come from the weekly block.
+        preferred = {employee.id: _fixed_shift(employee, working_codes) for employee in eligible}
 
-        off: set[int] = {employee.id for employee in eligible if preferred[employee.id] == OFF_CODE}
+        off: set[int] = {
+            employee.id for employee in eligible if _prefers_day_off(employee, current)
+        }
         pool: list[GenerationEmployee] = [
             employee for employee in eligible if employee.id not in off
         ]
         required_total = sum(required.values())
 
-        # Too many people available: add rotating days off.
+        # Too many people available: add days off, preferring employees who
+        # have had the fewest so far.
         while required_total > 0 and len(pool) > required_total:
             candidate = min(
                 pool,
                 key=lambda employee: (
                     off_counts[employee.id],
-                    preferred[employee.id] != OFF_CODE,
                     employee.rotation_offset,
                     employee.id,
                 ),
@@ -304,7 +346,8 @@ def compute_roster(
             pool.remove(candidate)
             off.add(candidate.id)
 
-        # Too few people available: recall people from their rotating day off.
+        # Too few people available: recall people from their planned day off,
+        # preferring employees who have already had the most days off.
         while len(pool) < required_total:
             candidates = [employee for employee in eligible if employee.id in off]
             if not candidates:
@@ -313,7 +356,6 @@ def compute_roster(
                 candidates,
                 key=lambda employee: (
                     off_counts[employee.id],
-                    preferred[employee.id] != OFF_CODE,
                     employee.rotation_offset,
                     employee.id,
                 ),
@@ -334,7 +376,7 @@ def compute_roster(
                     preferred[employee.id] != code,
                     shift_counts[employee.id][code],
                     work_counts[employee.id],
-                    (ordinal + employee.rotation_offset) % len(cycle),
+                    employee.rotation_offset,
                     employee.id,
                 ),
             )
@@ -344,10 +386,9 @@ def compute_roster(
                 work_counts[employee.id] += 1
             unassigned = [employee for employee in unassigned if employee.id not in assignments]
 
-        # Any remaining available employees work their preferred shift.
+        # Any remaining available employees work their fixed shift.
         for employee in unassigned:
-            preferred_code = preferred[employee.id]
-            code = preferred_code if preferred_code != OFF_CODE else working_codes[0]
+            code = preferred[employee.id]
             assignments[employee.id] = code
             shift_counts[employee.id][code] += 1
             work_counts[employee.id] += 1

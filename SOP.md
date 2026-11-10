@@ -120,7 +120,8 @@ Notes:
 
 Run the steps in this order each month. Later steps depend on earlier data.
 
-1. **Employees** — confirm active staff and rotation offsets.
+1. **Employees** — confirm active staff, primary shifts, days off per week, and
+   rotation offsets.
 2. **Employees → Availability** — record approved leave, comp-off, week-offs,
    and unavailable dates.
 3. **Settings → Holidays** — add public/company holidays for the month.
@@ -163,8 +164,11 @@ Open **Employees**.
 Adding an employee also creates their login account with the **employee** role.
 Share the initial password securely and ask them to change it.
 
-**Rotation** is assigned automatically as the next offset unless set explicitly.
-It controls where the employee starts in the shift cycle (see §10).
+**Primary shift** sets the shift the employee keeps for the month. Leave it on
+**Auto** to derive a balanced shift from the rotation offset. **Days off per
+week** controls how many consecutive days off they receive (default 2). The
+rotation offset is assigned automatically as the next offset and staggers the
+weekday their days off start on (see §10).
 
 ### Edit an employee
 
@@ -410,26 +414,31 @@ the currently published version.
 
 You do not need this to use the app, but it explains the output.
 
-- The rotation cycle is **`G → M → A → N → O`**.
-- Each employee has a **rotation offset**. The preferred status for a day is
-  `cycle[(day_ordinal + rotation_offset) % 5]`. Different offsets stagger
-  week-offs across the team.
+- Each employee has a **primary shift** for the month. It is either the
+  **Primary shift** set on the Employees page, or (when set to **Auto**) the
+  balanced shift `working_shifts[rotation_offset % count]`.
+- Days off rotate independently. Each employee gets **Days off per week**
+  consecutive days (default 2), starting on the weekday given by
+  `rotation_offset % 7`. Different offsets stagger the team's days off.
 - Holidays override everything: all employees receive `H`.
-- Availability overrides rotation:
+- Availability overrides the rotation:
   - leave → `L`
   - comp-off → `CO`
   - week-off / unavailable → `O`
-- Staffing requirements then pull employees into the needed working shifts.
-  Ties are broken by preference match, per-shift counts, total work counts,
-  rotation position, and employee ID, in that order.
-- If too many employees are available, the generator adds rotating days off. If
-  too few are available, it recalls employees from their rotating day off.
-- Any remaining available employees work their preferred shift (or the first
-  working shift if their preference was `O`).
+- Staffing requirements are the correction layer:
+  - If too many employees are available, the generator adds days off, choosing
+    employees with the fewest days off so far.
+  - If too few are available, it recalls employees from their planned day off,
+    preferring those who have had the most days off.
+  - Employees keep their primary shift. They are moved to another shift only
+    when the fixed-shift mix cannot cover a configured shift.
+- Ties are broken by primary-shift match, per-shift counts, total work counts,
+  rotation offset, and employee ID, in that order.
 - Remaining gaps are reported as shortages rather than hidden.
 
-Because generation uses a shared cycle, week-offs rotate along with shifts. It
-is a heuristic, not an optimiser; always review the draft.
+This produces the intended pattern: a person stays in their shift for the
+month, days off rotate, and people move only for coverage. It is a heuristic,
+not an optimiser; always review the draft.
 
 ---
 
@@ -473,7 +482,7 @@ is a heuristic, not an optimiser; always review the draft.
 ## 13. Monthly checklist (administrator)
 
 - [ ] Confirm the employee list is current; deactivate leavers and add new staff.
-- [ ] Set or verify rotation offsets for new employees.
+- [ ] Set or verify each employee's primary shift, days off, and rotation offset.
 - [ ] Enter all approved leave, comp-off, week-offs, and unavailable dates.
 - [ ] Add this month's holidays in **Settings**.
 - [ ] Review **Staffing requirements** for each weekday.
@@ -503,6 +512,7 @@ is a heuristic, not an optimiser; always review the draft.
 | Minimum password length | 8 characters |
 | Working statuses | `G`, `M`, `A`, `N` |
 | Non-working statuses | `L`, `CO`, `O`, `H` |
-| Rotation cycle | `G → M → A → N → O` |
+| Shift model | Fixed primary shift per month |
+| Days off | `weekly_off_days` consecutive days/week, staggered by rotation offset |
 | Drafts per month | One |
 | Roster export format | PNG |

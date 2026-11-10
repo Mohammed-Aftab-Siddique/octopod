@@ -26,6 +26,8 @@ export interface Employee {
   email: string;
   is_active: boolean;
   rotation_offset: number;
+  default_shift: string | null;
+  weekly_off_days: number;
   created_at: string;
 }
 

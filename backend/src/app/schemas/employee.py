@@ -14,6 +14,9 @@ OptionalEmployeeCode = Annotated[
 OptionalEmployeeName = Annotated[
     str | None, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
 ]
+ShiftCode = Annotated[
+    str | None, StringConstraints(strip_whitespace=True, min_length=1, max_length=8)
+]
 
 
 class EmployeeCreate(BaseModel):
@@ -21,6 +24,8 @@ class EmployeeCreate(BaseModel):
     full_name: EmployeeName
     email: EmailStr
     rotation_offset: int | None = Field(default=None, ge=0)
+    default_shift: ShiftCode = None
+    weekly_off_days: int | None = Field(default=None, ge=0, le=6)
     password: str | None = Field(default=None, min_length=8, max_length=200)
 
 
@@ -29,6 +34,8 @@ class EmployeeUpdate(BaseModel):
     full_name: OptionalEmployeeName = None
     email: EmailStr | None = None
     rotation_offset: int | None = Field(default=None, ge=0)
+    default_shift: ShiftCode = None
+    weekly_off_days: int | None = Field(default=None, ge=0, le=6)
     is_active: bool | None = None
 
 
@@ -41,6 +48,8 @@ class EmployeeOut(BaseModel):
     email: str
     is_active: bool
     rotation_offset: int
+    default_shift: str | None
+    weekly_off_days: int
     created_at: UTCDateTime
 
 

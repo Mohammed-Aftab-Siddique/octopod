@@ -414,8 +414,8 @@ the change.
   administrator action.
 - Treat published versions as immutable snapshots. Create a new draft/version
   to make changes; archive the previous published version.
-- Use the shared rotation cycle and fairness counters consistently. Document
-  any change to the cycle or selection rules in `docs/decisions.md`.
+- Use the fixed-shift rotation and fairness counters consistently. Document
+  any change to the shift, week-off, or selection rules in `docs/decisions.md`.
 - Read status codes and labels from the database. Do not hard-code domain
   statuses in unrelated presentation code.
 - Keep assignment uniqueness and month-boundary validation in both service

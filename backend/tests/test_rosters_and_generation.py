@@ -240,7 +240,7 @@ def test_published_version_excludes_later_hires(client, seeded):
     assert late_id not in {employee["id"] for employee in me.json()["employees"]}
 
 
-def test_generated_roster_rotates_shifts_and_days_off(client, seeded):
+def test_generated_roster_keeps_fixed_shift_and_rotates_days_off(client, seeded):
     headers = login_headers(client, "admin@test.local", "Admin123!")
     _set_requirements(client, headers, 1)  # 4 working, 2 off per day
     roster = _create_roster(client, headers)
@@ -248,10 +248,62 @@ def test_generated_roster_rotates_shifts_and_days_off(client, seeded):
     assert response.status_code == 200
     assignments = response.json()["roster"]["assignments"]
 
-    by_employee = Counter()
+    working_codes = {"G", "M", "A", "N"}
+    by_employee: dict[int, Counter] = {}
     for item in assignments:
-        by_employee[(item["employee_id"], item["status_code"])] += 1
+        by_employee.setdefault(item["employee_id"], Counter())[item["status_code"]] += 1
 
     for employee_id, _ in seeded["employees"]:
-        codes = {code for (emp, code) in by_employee if emp == employee_id}
-        assert {"G", "M", "A", "N", "O"} <= codes
+        counts = by_employee[employee_id]
+        worked = {code: count for code, count in counts.items() if code in working_codes}
+        assert worked, "every employee should work at least one day"
+        # The employee is not rotated through every shift. Their primary shift
+        # dominates; coverage corrections may still move them occasionally.
+        primary, primary_days = max(worked.items(), key=lambda item: item[1])
+        assert primary_days >= sum(worked.values()) / 2
+        # Days off still rotate, so everyone receives at least one.
+        assert counts["O"] > 0
+
+
+def test_fixed_shift_is_used_and_validated(client, seeded):
+    headers = login_headers(client, "admin@test.local", "Admin123!")
+
+    invalid = client.patch(
+        f"/api/v1/employees/{seeded['employees'][0][0]}",
+        headers=headers,
+        json={"default_shift": "O"},
+    )
+    assert invalid.status_code == 400
+
+    for employee_id, _ in seeded["employees"]:
+        response = client.patch(
+            f"/api/v1/employees/{employee_id}",
+            headers=headers,
+            json={"default_shift": "G", "weekly_off_days": 1},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["default_shift"] == "G"
+        assert response.json()["weekly_off_days"] == 1
+
+    requirements = [
+        {"weekday": weekday, "status_code": "G", "required_count": 4} for weekday in range(7)
+    ]
+    saved = client.put(
+        "/api/v1/reference/staffing-requirements",
+        headers=headers,
+        json={"requirements": requirements},
+    )
+    assert saved.status_code == 200, saved.text
+
+    roster = _create_roster(client, headers)
+    generated = client.post(f"/api/v1/rosters/{roster['id']}/generate", headers=headers)
+    assert generated.status_code == 200, generated.text
+    assignments = generated.json()["roster"]["assignments"]
+
+    # Every working assignment is the fixed shift; nobody rotates to M/A/N.
+    assert {item["status_code"] for item in assignments if item["status_code"] not in ("O",)} == {
+        "G"
+    }
+
+    days_off = Counter(item["employee_id"] for item in assignments if item["status_code"] == "O")
+    assert set(days_off) == {employee_id for employee_id, _ in seeded["employees"]}

@@ -21,13 +21,13 @@ standards, [`SOP.md`](./SOP.md) for the user guide, and
 - Approved leave, comp-off, week-off, and unavailable dates (date ranges).
 - Monthly roster drafts rendered as an employee × date grid with sticky headers.
 - Seven statuses plus a holiday `H` code, all colour-coded with a legend.
-- Assisted generation with rotating shifts and week-offs, staffing requirements,
-  leave exclusion, and shortage reporting.
+- Assisted generation with a fixed primary shift per employee, rotating
+  week-offs, staffing requirements, leave exclusion, and shortage reporting.
 - Explicit publish approval, immutable published versions, and archived history.
 - Employee self-view (own row by default) and full-team read-only view.
 - PNG export rendered client-side (month, dates, names, statuses, and legend).
 - PWA manifest and service worker (installable; offline editing is out of scope).
-- Rotating rotation offset per employee; holidays configured per month.
+- Per-employee primary shift and weekly days off; holidays configured per month.
 
 ## Quick start (Linux / macOS)
 
@@ -167,11 +167,14 @@ Generation is deterministic backend logic (no external optimiser):
 1. Active employees are filtered against approved leave, comp-off, week-off,
    and unavailable dates.
 2. Holidays receive the `H` status for everyone.
-3. A shared rotation cycle (`G → M → A → N → O`) uses a per-employee
-   `rotation_offset`, so week-offs rotate with shifts.
+3. Each employee keeps a fixed primary shift for the month (`default_shift`,
+   or a balanced shift derived from `rotation_offset`). Days off rotate
+   independently: `weekly_off_days` consecutive days per week, staggered by
+   `rotation_offset`.
 4. Staffing requirements for the weekday drive coverage. The generator can pull
-   employees out of a rotating day off (or add a day off) to meet coverage,
-   while tracking fairness counters.
+   employees out of a planned day off (or add a day off), and move employees to
+   another shift only when the fixed-shift mix cannot cover it, while tracking
+   fairness counters.
 5. Shortages are returned for administrator review. Generated rosters are
    always drafts and require explicit publish approval.
 

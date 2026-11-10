@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 import { z } from "zod";
 
 import { ApiError } from "@/api/client";
-import { employeesApi } from "@/api/endpoints";
+import { employeesApi, referenceApi } from "@/api/endpoints";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { PageHeader } from "@/components/PageHeader";
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 
 const employeeSchema = z.object({
@@ -33,6 +34,8 @@ const employeeSchema = z.object({
     .regex(/^[A-Za-z0-9_-]+$/, "Use letters, numbers, hyphens or underscores"),
   full_name: z.string().min(1, "Name is required").max(120),
   email: z.string().email("Enter a valid email"),
+  default_shift: z.string(),
+  weekly_off_days: z.number().int().min(0).max(6),
   password: z.string().min(8, "Use at least 8 characters").optional().or(z.literal("")),
 });
 
@@ -57,9 +60,22 @@ export function AdminEmployeesPage() {
     queryFn: () => employeesApi.list(showInactive),
   });
 
+  const statusesQuery = useQuery({
+    queryKey: ["shift-statuses"],
+    queryFn: () => referenceApi.listStatuses(),
+  });
+  const workingStatuses = (statusesQuery.data ?? []).filter((status) => status.is_working);
+
   const form = useForm<EmployeeForm>({
     resolver: zodResolver(employeeSchema),
-    defaultValues: { employee_code: "", full_name: "", email: "", password: "" },
+    defaultValues: {
+      employee_code: "",
+      full_name: "",
+      email: "",
+      default_shift: "",
+      weekly_off_days: 2,
+      password: "",
+    },
   });
 
   const resetForm = useForm<ResetForm>({
@@ -74,10 +90,19 @@ export function AdminEmployeesPage() {
         employee_code: editing.employee_code,
         full_name: editing.full_name,
         email: editing.email,
+        default_shift: editing.default_shift ?? "",
+        weekly_off_days: editing.weekly_off_days,
         password: "",
       });
     } else {
-      form.reset({ employee_code: "", full_name: "", email: "", password: "" });
+      form.reset({
+        employee_code: "",
+        full_name: "",
+        email: "",
+        default_shift: "",
+        weekly_off_days: 2,
+        password: "",
+      });
     }
   }, [dialogOpen, editing, form]);
 
@@ -87,6 +112,8 @@ export function AdminEmployeesPage() {
         employee_code: values.employee_code.trim().toUpperCase(),
         full_name: values.full_name.trim(),
         email: values.email.trim(),
+        default_shift: values.default_shift || null,
+        weekly_off_days: values.weekly_off_days,
         ...(values.password ? { password: values.password } : {}),
       };
       return editing
@@ -176,7 +203,7 @@ export function AdminEmployeesPage() {
                 <tr className="border-b bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th scope="col" className="px-4 py-3 font-medium">Employee</th>
                   <th scope="col" className="px-4 py-3 font-medium">Email</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Rotation</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Shift / off</th>
                   <th scope="col" className="px-4 py-3 font-medium">Status</th>
                   <th scope="col" className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
@@ -209,7 +236,9 @@ export function AdminEmployeesPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.email}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{employee.rotation_offset}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {employee.default_shift ?? "Auto"} · {employee.weekly_off_days} off/wk
+                      </td>
                       <td className="px-4 py-3">
                         <Badge variant={employee.is_active ? "success" : "muted"}>
                           {employee.is_active ? "Active" : "Inactive"}
@@ -291,6 +320,41 @@ export function AdminEmployeesPage() {
               {form.formState.errors.email ? (
                 <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>
               ) : null}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="default_shift">Primary shift</Label>
+                <Select id="default_shift" {...form.register("default_shift")}>
+                  <option value="">Auto (balanced)</option>
+                  {workingStatuses.map((status) => (
+                    <option key={status.code} value={status.code}>
+                      {status.code} — {status.label}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Employees keep this shift all month; coverage needs can move them.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="weekly_off_days">Days off per week</Label>
+                <Input
+                  id="weekly_off_days"
+                  type="number"
+                  min={0}
+                  max={6}
+                  {...form.register("weekly_off_days", { valueAsNumber: true })}
+                />
+                {form.formState.errors.weekly_off_days ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.weekly_off_days.message}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Consecutive days, staggered by rotation offset.
+                  </p>
+                )}
+              </div>
             </div>
             {!editing ? (
               <div className="space-y-1.5">
