@@ -11,7 +11,6 @@ from app.models.employee import utcnow
 class AvailabilityKind(StrEnum):
     leave = "leave"
     comp_off = "comp_off"
-    week_off = "week_off"
     unavailable = "unavailable"
 
 

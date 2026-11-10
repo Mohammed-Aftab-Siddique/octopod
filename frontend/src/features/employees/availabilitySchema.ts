@@ -4,7 +4,7 @@ export const availabilitySchema = z
   .object({
     start_date: z.string().min(1, "Choose a start date"),
     end_date: z.string().min(1, "Choose an end date"),
-    kind: z.enum(["leave", "comp_off", "week_off", "unavailable"]),
+    kind: z.enum(["leave", "comp_off", "unavailable"]),
     note: z.string().max(255).optional(),
   })
   .refine((values) => values.end_date >= values.start_date, {

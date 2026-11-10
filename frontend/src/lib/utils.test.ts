@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { monthLabel, shiftMonth, statusBadgeClass } from "./utils";
+import { monthLabel, shiftMonth, statusBadgeClass, weekOffPairLabel } from "./utils";
 
 describe("date helpers", () => {
   it("rolls over to the next year", () => {
@@ -13,6 +13,12 @@ describe("date helpers", () => {
 
   it("formats month labels", () => {
     expect(monthLabel(2026, 11)).toBe("November 2026");
+  });
+
+  it("formats consecutive week-off pairs, including the week boundary", () => {
+    expect(weekOffPairLabel(0)).toBe("Monday – Tuesday");
+    expect(weekOffPairLabel(5)).toBe("Saturday – Sunday");
+    expect(weekOffPairLabel(6)).toBe("Sunday – Monday");
   });
 });
 

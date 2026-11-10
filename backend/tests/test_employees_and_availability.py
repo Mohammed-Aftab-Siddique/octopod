@@ -137,3 +137,11 @@ def test_availability_validation(client, seeded):
         json={"start_date": "2026-11-12", "end_date": "2026-11-10", "kind": "leave"},
     )
     assert response.status_code == 422
+
+    # Week-offs are configured on the employee record, not as availability.
+    week_off = client.post(
+        f"/api/v1/employees/{employee_id}/availability",
+        headers=headers,
+        json={"start_date": "2026-11-12", "end_date": "2026-11-13", "kind": "week_off"},
+    )
+    assert week_off.status_code == 422

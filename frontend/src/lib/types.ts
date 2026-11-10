@@ -27,7 +27,7 @@ export interface Employee {
   is_active: boolean;
   rotation_offset: number;
   default_shift: string | null;
-  weekly_off_days: number;
+  week_off_start_day: number;
   created_at: string;
 }
 
@@ -36,7 +36,7 @@ export interface EmployeeLookup {
   full_name: string;
 }
 
-export type AvailabilityKind = "leave" | "comp_off" | "week_off" | "unavailable";
+export type AvailabilityKind = "leave" | "comp_off" | "unavailable";
 
 export interface Availability {
   id: number;

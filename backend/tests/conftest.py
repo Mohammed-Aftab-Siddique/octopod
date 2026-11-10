@@ -137,6 +137,7 @@ def seeded():
                 full_name=f"Employee {index}",
                 email=f"employee{index}@test.local",
                 rotation_offset=index - 1,
+                week_off_start_day=(index - 1) % 7,
             )
             db.add(employee)
             db.flush()

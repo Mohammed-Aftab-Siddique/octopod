@@ -1,4 +1,5 @@
 from collections import Counter
+from datetime import date
 
 from conftest import login_headers
 
@@ -279,11 +280,11 @@ def test_fixed_shift_is_used_and_validated(client, seeded):
         response = client.patch(
             f"/api/v1/employees/{employee_id}",
             headers=headers,
-            json={"default_shift": "G", "weekly_off_days": 1},
+            json={"default_shift": "G", "week_off_start_day": 5},
         )
         assert response.status_code == 200, response.text
         assert response.json()["default_shift"] == "G"
-        assert response.json()["weekly_off_days"] == 1
+        assert response.json()["week_off_start_day"] == 5
 
     requirements = [
         {"weekday": weekday, "status_code": "G", "required_count": 4} for weekday in range(7)
@@ -307,3 +308,47 @@ def test_fixed_shift_is_used_and_validated(client, seeded):
 
     days_off = Counter(item["employee_id"] for item in assignments if item["status_code"] == "O")
     assert set(days_off) == {employee_id for employee_id, _ in seeded["employees"]}
+
+
+def test_generation_uses_each_employees_consecutive_week_off_pair(client, seeded):
+    headers = login_headers(client, "admin@test.local", "Admin123!")
+    roster = _create_roster(client, headers)
+
+    start_days: dict[int, int] = {}
+    for index, (employee_id, _) in enumerate(seeded["employees"]):
+        start_day = index % 7
+        start_days[employee_id] = start_day
+        updated = client.patch(
+            f"/api/v1/employees/{employee_id}",
+            headers=headers,
+            json={"week_off_start_day": start_day},
+        )
+        assert updated.status_code == 200, updated.text
+
+    # Require exactly the number of people who are not on their planned
+    # week-off, so the generator adds no extra days off and recalls nobody.
+    requirements = []
+    for weekday in range(7):
+        off = sum(1 for start in start_days.values() if (weekday - start) % 7 < 2)
+        requirements.append(
+            {
+                "weekday": weekday,
+                "status_code": "G",
+                "required_count": len(start_days) - off,
+            }
+        )
+    saved = client.put(
+        "/api/v1/reference/staffing-requirements",
+        headers=headers,
+        json={"requirements": requirements},
+    )
+    assert saved.status_code == 200, saved.text
+
+    generated = client.post(f"/api/v1/rosters/{roster['id']}/generate", headers=headers)
+    assert generated.status_code == 200, generated.text
+    assignments = generated.json()["roster"]["assignments"]
+
+    for item in assignments:
+        weekday = date.fromisoformat(item["date"]).weekday()
+        is_week_off = (weekday - start_days[item["employee_id"]]) % 7 < 2
+        assert item["status_code"] == ("O" if is_week_off else "G")

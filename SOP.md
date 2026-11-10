@@ -120,10 +120,10 @@ Notes:
 
 Run the steps in this order each month. Later steps depend on earlier data.
 
-1. **Employees** — confirm active staff, primary shifts, days off per week, and
+1. **Employees** — confirm active staff, primary shifts, week-off days, and
    rotation offsets.
-2. **Employees → Availability** — record approved leave, comp-off, week-offs,
-   and unavailable dates.
+2. **Employees → Availability** — record approved leave, comp-off, and
+   unavailable dates.
 3. **Settings → Holidays** — add public/company holidays for the month.
 4. **Settings → Staffing requirements** — set required headcount per weekday and
    working shift.
@@ -165,10 +165,10 @@ Adding an employee also creates their login account with the **employee** role.
 Share the initial password securely and ask them to change it.
 
 **Primary shift** sets the shift the employee keeps for the month. Leave it on
-**Auto** to derive a balanced shift from the rotation offset. **Days off per
-week** controls how many consecutive days off they receive (default 2). The
-rotation offset is assigned automatically as the next offset and staggers the
-weekday their days off start on (see §10).
+**Auto** to derive a balanced shift from the rotation offset. **Week-off days**
+selects the employee's two consecutive days off (for example Monday–Tuesday or
+Sunday–Monday). The generator adds that pair to every draft automatically. The
+rotation offset is assigned automatically as the next offset (see §10).
 
 ### Edit an employee
 
@@ -230,7 +230,6 @@ one month before the current month through six months ahead.
 2. Choose **Type**:
    - **Leave**
    - **Compensatory off**
-   - **Week-off**
    - **Unavailable**
 3. Optionally add a **Note** (for example “Approved leave”).
 4. Select **Add availability**.
@@ -247,8 +246,10 @@ Rules and behaviour:
 - During generation:
   - **Leave** → `L`
   - **Compensatory off** → `CO`
-  - **Week-off** and **Unavailable** → `O`
+  - **Unavailable** → `O`
   - A configured **holiday** overrides availability and gives everyone `H`.
+- Week-offs are not recorded as availability. Set the employee's **Week-off
+  days** on the Employees page instead.
 
 ### Remove availability
 
@@ -417,14 +418,13 @@ You do not need this to use the app, but it explains the output.
 - Each employee has a **primary shift** for the month. It is either the
   **Primary shift** set on the Employees page, or (when set to **Auto**) the
   balanced shift `working_shifts[rotation_offset % count]`.
-- Days off rotate independently. Each employee gets **Days off per week**
-  consecutive days (default 2), starting on the weekday given by
-  `rotation_offset % 7`. Different offsets stagger the team's days off.
+- Each employee gets the **Week-off days** pair chosen on the Employees page
+  (`week_off_start_day` and the following day). The pair repeats every week.
 - Holidays override everything: all employees receive `H`.
-- Availability overrides the rotation:
+- Availability overrides the week-off plan:
   - leave → `L`
   - comp-off → `CO`
-  - week-off / unavailable → `O`
+  - unavailable → `O`
 - Staffing requirements are the correction layer:
   - If too many employees are available, the generator adds days off, choosing
     employees with the fewest days off so far.
@@ -437,8 +437,8 @@ You do not need this to use the app, but it explains the output.
 - Remaining gaps are reported as shortages rather than hidden.
 
 This produces the intended pattern: a person stays in their shift for the
-month, days off rotate, and people move only for coverage. It is a heuristic,
-not an optimiser; always review the draft.
+month, keeps their chosen week-off pair, and moves only for coverage. It is a
+heuristic, not an optimiser; always review the draft.
 
 ---
 
@@ -482,8 +482,9 @@ not an optimiser; always review the draft.
 ## 13. Monthly checklist (administrator)
 
 - [ ] Confirm the employee list is current; deactivate leavers and add new staff.
-- [ ] Set or verify each employee's primary shift, days off, and rotation offset.
-- [ ] Enter all approved leave, comp-off, week-offs, and unavailable dates.
+- [ ] Set or verify each employee's primary shift, week-off days, and rotation
+      offset.
+- [ ] Enter all approved leave, comp-off, and unavailable dates.
 - [ ] Add this month's holidays in **Settings**.
 - [ ] Review **Staffing requirements** for each weekday.
 - [ ] Create or open the month's draft.
@@ -513,6 +514,6 @@ not an optimiser; always review the draft.
 | Working statuses | `G`, `M`, `A`, `N` |
 | Non-working statuses | `L`, `CO`, `O`, `H` |
 | Shift model | Fixed primary shift per month |
-| Days off | `weekly_off_days` consecutive days/week, staggered by rotation offset |
+| Days off | `week_off_start_day` plus the following day (two consecutive days/week) |
 | Drafts per month | One |
 | Roster export format | PNG |

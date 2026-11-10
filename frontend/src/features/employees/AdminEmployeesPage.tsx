@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
+import { WEEK_OFF_OPTIONS, weekOffPairLabel } from "@/lib/utils";
 
 const employeeSchema = z.object({
   employee_code: z
@@ -35,7 +36,7 @@ const employeeSchema = z.object({
   full_name: z.string().min(1, "Name is required").max(120),
   email: z.string().email("Enter a valid email"),
   default_shift: z.string(),
-  weekly_off_days: z.number().int().min(0).max(6),
+  week_off_start_day: z.number().int().min(0).max(6),
   password: z.string().min(8, "Use at least 8 characters").optional().or(z.literal("")),
 });
 
@@ -73,7 +74,7 @@ export function AdminEmployeesPage() {
       full_name: "",
       email: "",
       default_shift: "",
-      weekly_off_days: 2,
+      week_off_start_day: 0,
       password: "",
     },
   });
@@ -91,7 +92,7 @@ export function AdminEmployeesPage() {
         full_name: editing.full_name,
         email: editing.email,
         default_shift: editing.default_shift ?? "",
-        weekly_off_days: editing.weekly_off_days,
+        week_off_start_day: editing.week_off_start_day,
         password: "",
       });
     } else {
@@ -100,7 +101,7 @@ export function AdminEmployeesPage() {
         full_name: "",
         email: "",
         default_shift: "",
-        weekly_off_days: 2,
+        week_off_start_day: 0,
         password: "",
       });
     }
@@ -113,7 +114,7 @@ export function AdminEmployeesPage() {
         full_name: values.full_name.trim(),
         email: values.email.trim(),
         default_shift: values.default_shift || null,
-        weekly_off_days: values.weekly_off_days,
+        week_off_start_day: values.week_off_start_day,
         ...(values.password ? { password: values.password } : {}),
       };
       return editing
@@ -237,7 +238,7 @@ export function AdminEmployeesPage() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.email}</td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {employee.default_shift ?? "Auto"} · {employee.weekly_off_days} off/wk
+                        {employee.default_shift ?? "Auto"} · {weekOffPairLabel(employee.week_off_start_day)}
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant={employee.is_active ? "success" : "muted"}>
@@ -337,21 +338,24 @@ export function AdminEmployeesPage() {
                 </p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="weekly_off_days">Days off per week</Label>
-                <Input
-                  id="weekly_off_days"
-                  type="number"
-                  min={0}
-                  max={6}
-                  {...form.register("weekly_off_days", { valueAsNumber: true })}
-                />
-                {form.formState.errors.weekly_off_days ? (
+                <Label htmlFor="week_off_start_day">Week-off days</Label>
+                <Select
+                  id="week_off_start_day"
+                  {...form.register("week_off_start_day", { valueAsNumber: true })}
+                >
+                  {WEEK_OFF_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+                {form.formState.errors.week_off_start_day ? (
                   <p className="text-xs text-destructive">
-                    {form.formState.errors.weekly_off_days.message}
+                    {form.formState.errors.week_off_start_day.message}
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    Consecutive days, staggered by rotation offset.
+                    Two consecutive days per week, added automatically to drafts.
                   </p>
                 )}
               </div>

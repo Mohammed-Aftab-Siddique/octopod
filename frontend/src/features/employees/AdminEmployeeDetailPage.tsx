@@ -19,19 +19,17 @@ import { Select } from "@/components/ui/select";
 import { availabilitySchema, type AvailabilityForm } from "@/features/employees/availabilitySchema";
 import { formatDateOnly } from "@/lib/dates";
 import type { AvailabilityKind } from "@/lib/types";
-import { todayIso } from "@/lib/utils";
+import { todayIso, weekOffPairLabel } from "@/lib/utils";
 
 const KIND_LABELS: Record<AvailabilityKind, string> = {
   leave: "Leave",
   comp_off: "Compensatory off",
-  week_off: "Week-off",
   unavailable: "Unavailable",
 };
 
 const KIND_CLASSES: Record<AvailabilityKind, string> = {
   leave: "bg-red-100 text-red-800",
   comp_off: "bg-orange-100 text-orange-800",
-  week_off: "bg-slate-200 text-slate-700",
   unavailable: "bg-amber-100 text-amber-800",
 };
 
@@ -102,7 +100,7 @@ export function AdminEmployeeDetailPage() {
         title={employee?.full_name ?? "Employee"}
         description={
           employee
-            ? `${employee.employee_code} · ${employee.email} · ${employee.default_shift ?? "auto"} shift · ${employee.weekly_off_days} off/week · rotation offset ${employee.rotation_offset}`
+            ? `${employee.employee_code} · ${employee.email} · ${employee.default_shift ?? "auto"} shift · week-off ${weekOffPairLabel(employee.week_off_start_day)} · rotation offset ${employee.rotation_offset}`
             : "Loading employee details…"
         }
         actions={
@@ -121,7 +119,8 @@ export function AdminEmployeeDetailPage() {
           <CardHeader>
             <CardTitle>Add availability</CardTitle>
             <CardDescription>
-              Leave is pre-approved. Record ranges for any dates in the month, including past dates.
+              Leave is pre-approved. Record ranges for any dates in the month, including past
+              dates. Week-offs are configured on the employee record.
             </CardDescription>
           </CardHeader>
           <CardContent>

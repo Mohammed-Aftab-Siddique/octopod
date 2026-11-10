@@ -5,6 +5,27 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export const WEEKDAY_NAMES = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+/** The two consecutive week-off days for a start day (0 = Monday). */
+export function weekOffPairLabel(startDay: number): string {
+  const start = ((startDay % 7) + 7) % 7;
+  return `${WEEKDAY_NAMES[start]} – ${WEEKDAY_NAMES[(start + 1) % 7]}`;
+}
+
+export const WEEK_OFF_OPTIONS = WEEKDAY_NAMES.map((_, index) => ({
+  value: index,
+  label: weekOffPairLabel(index),
+}));
+
 export const MONTH_NAMES = [
   "January",
   "February",

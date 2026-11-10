@@ -2,8 +2,8 @@
 
 Every employee holds a **fixed shift** for the roster period (their
 ``default_shift``, or a balanced shift derived from ``rotation_offset`` when it
-is unset). Week-offs rotate independently: each employee gets a block of
-consecutive days off per week, staggered by ``rotation_offset``.
+is unset). Week-offs are the employee's chosen pair of consecutive weekdays
+(``week_off_start_day`` and the following day).
 
 Staffing requirements are the correction layer. They can add an extra day off
 or recall an employee from a planned day off, and they move employees between
@@ -57,7 +57,7 @@ class GenerationEmployee:
     id: int
     rotation_offset: int
     default_shift: str | None = None
-    weekly_off_days: int = 2
+    week_off_start_day: int = 0
 
 
 @dataclass(frozen=True)
@@ -103,7 +103,7 @@ def load_generation_inputs(db: Session, period: RosterPeriod) -> GenerationInput
             id=employee.id,
             rotation_offset=employee.rotation_offset,
             default_shift=employee.default_shift,
-            weekly_off_days=employee.weekly_off_days,
+            week_off_start_day=employee.week_off_start_day,
         )
         for employee in db.scalars(
             select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.id)
@@ -149,7 +149,7 @@ def inputs_to_payload(inputs: GenerationInputs) -> dict[str, Any]:
                 "id": employee.id,
                 "rotation_offset": employee.rotation_offset,
                 "default_shift": employee.default_shift,
-                "weekly_off_days": employee.weekly_off_days,
+                "week_off_start_day": employee.week_off_start_day,
             }
             for employee in inputs.employees
         ],
@@ -181,7 +181,9 @@ def inputs_from_payload(payload: dict[str, Any]) -> GenerationInputs:
                 id=int(item["id"]),
                 rotation_offset=int(item["rotation_offset"]),
                 default_shift=item.get("default_shift"),
-                weekly_off_days=int(item.get("weekly_off_days", 2)),
+                week_off_start_day=int(
+                    item.get("week_off_start_day", int(item["rotation_offset"]) % 7)
+                ),
             )
             for item in payload.get("employees", [])
         ],
@@ -227,15 +229,9 @@ def _fixed_shift(employee: GenerationEmployee, working_codes: list[str]) -> str:
 
 
 def _prefers_day_off(employee: GenerationEmployee, current: date) -> bool:
-    """Whether the employee's weekly off block covers ``current``."""
+    """Whether ``current`` falls in the employee's two consecutive week-off days."""
 
-    days = employee.weekly_off_days
-    if days <= 0:
-        return False
-    if days >= 7:
-        return True
-    start = employee.rotation_offset % 7
-    return (current.weekday() - start) % 7 < days
+    return (current.weekday() - employee.week_off_start_day) % 7 < 2
 
 
 def compute_roster(
@@ -303,7 +299,7 @@ def compute_roster(
                 base_rows.append(
                     {"employee_id": employee.id, "date": current, "status_code": COMP_OFF_CODE}
                 )
-            elif kind in (AvailabilityKind.week_off, AvailabilityKind.unavailable):
+            elif kind == AvailabilityKind.unavailable:
                 base_rows.append(
                     {"employee_id": employee.id, "date": current, "status_code": OFF_CODE}
                 )

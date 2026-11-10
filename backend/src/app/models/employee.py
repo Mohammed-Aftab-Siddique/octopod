@@ -26,9 +26,10 @@ class Employee(Base):
     # Primary shift code (e.g. "G"). ``None`` means derive it from
     # ``rotation_offset`` at generation time.
     default_shift: Mapped[str | None] = mapped_column(String(8), default=None, nullable=True)
-    # Consecutive days off per week. The starting weekday is staggered by
-    # ``rotation_offset``; staffing requirements can still override it.
-    weekly_off_days: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    # First of two consecutive week-off days, using ISO weekdays
+    # (0 = Monday … 6 = Sunday). Staffing requirements can still override the
+    # planned pair when coverage is short.
+    week_off_start_day: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

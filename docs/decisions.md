@@ -10,16 +10,20 @@ The availability form accepts a date range, including past dates within the
 current month, so leave can be entered whenever it becomes known. Overlapping
 ranges update existing entries rather than creating duplicates.
 
-## 2. Fixed shifts with rotating week-offs
+## 2. Fixed shifts with chosen consecutive week-offs
 
 Employees hold a **primary shift** for the roster period rather than rotating
 through every shift each day. The shift is `default_shift` when set; otherwise
 it is derived from `rotation_offset` (`working_shifts[offset % count]`) so a
 new team is balanced automatically.
 
-Week-offs rotate independently. Each employee gets `weekly_off_days`
-consecutive days off per week (default `2`), starting on the weekday given by
-`rotation_offset % 7`. Different offsets therefore stagger the team's days off.
+Week-offs are configured per employee. Administrators choose the first of two
+consecutive days off (`week_off_start_day`, ISO weekday where `0` is Monday).
+The same pair repeats every week and is added to each generated draft. When an
+employee is created without an explicit pair, the start day defaults to
+`rotation_offset % 7` so a new team starts staggered. Week-offs are no longer
+recorded as availability; that picker only covers leave, comp-off, and
+unavailable dates.
 
 Staffing requirements are the correction layer: when coverage is short they
 can recall an employee from a planned day off, and when a shift is over-staffed

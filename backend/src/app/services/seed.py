@@ -110,6 +110,7 @@ async def seed_demo(db: Session) -> None:
             full_name=name,
             email=email,
             rotation_offset=index - 1,
+            week_off_start_day=(index - 1) % 7,
             is_active=True,
         )
         db.add(employee)
