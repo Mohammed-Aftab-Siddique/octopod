@@ -18,8 +18,6 @@ import { RosterLegend } from "@/components/roster/RosterLegend";
 import { firstDayOfMonthIso, formatDateOnly } from "@/lib/dates";
 import { currentMonth } from "@/lib/utils";
 
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-
 const holidaySchema = z.object({
   date: z.string().min(1, "Choose a date"),
   label: z.string().trim().min(1, "Enter a holiday label").max(120),
@@ -69,7 +67,7 @@ export function AdminSettingsPage() {
     if (!requirementsQuery.data) return;
     const next: Record<string, number> = {};
     for (const requirement of requirementsQuery.data) {
-      next[`${requirement.weekday}:${requirement.status_code}`] = requirement.required_count;
+      next[requirement.status_code] = requirement.required_count;
     }
     setCounts(next);
   }, [requirementsQuery.data]);
@@ -77,13 +75,10 @@ export function AdminSettingsPage() {
   const saveRequirements = useMutation({
     mutationFn: () =>
       referenceApi.saveRequirements(
-        WEEKDAYS.flatMap((_, weekday) =>
-          workingStatuses.map((status) => ({
-            weekday,
-            status_code: status.code,
-            required_count: counts[`${weekday}:${status.code}`] ?? 0,
-          })),
-        ),
+        workingStatuses.map((status) => ({
+          status_code: status.code,
+          required_count: counts[status.code] ?? 0,
+        })),
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["staffing-requirements"] });
@@ -129,8 +124,9 @@ export function AdminSettingsPage() {
             <div>
               <CardTitle>Staffing requirements</CardTitle>
               <CardDescription>
-                Required headcount per working shift for each weekday. Generation reports a shortage
-                when this cannot be met.
+                Number of people who belong to each working shift for the whole month. The same
+                headcount applies every day, so employees on their week-off still count towards
+                their shift.
               </CardDescription>
             </div>
             <Button
@@ -141,51 +137,36 @@ export function AdminSettingsPage() {
               {saveRequirements.isPending ? "Saving…" : "Save"}
             </Button>
           </CardHeader>
-          <CardContent className="overflow-x-auto p-0">
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="border-y bg-slate-50 text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2 text-left font-medium">Weekday</th>
-                  {workingStatuses.map((status) => (
-                    <th key={status.code} className="px-3 py-2 text-center font-medium">
-                      <span
-                        className="mr-1 inline-block h-3 w-3 rounded-sm align-middle"
-                        style={{ backgroundColor: status.color }}
-                      />
-                      {status.code}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {WEEKDAYS.map((label, weekday) => (
-                  <tr key={label} className="border-b last:border-0">
-                    <td className="px-4 py-2 font-medium">{label}</td>
-                    {workingStatuses.map((status) => (
-                      <td key={status.code} className="px-3 py-2 text-center">
-                        <Input
-                          type="number"
-                          min={0}
-                          max={10000}
-                          className="mx-auto h-8 w-16 text-center"
-                          value={counts[`${weekday}:${status.code}`] ?? 0}
-                          onChange={(event) =>
-                            setCounts((current) => ({
-                              ...current,
-                              [`${weekday}:${status.code}`]: Math.max(
-                                0,
-                                Number(event.target.value) || 0,
-                              ),
-                            }))
-                          }
-                          aria-label={`${label} ${status.label} required count`}
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <CardContent className="space-y-3 p-4">
+            {workingStatuses.map((status) => (
+              <div key={status.code} className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm"
+                    style={{ backgroundColor: status.color }}
+                  />
+                  {status.label}
+                  <span className="text-xs text-muted-foreground">({status.code})</span>
+                </div>
+                <Input
+                  type="number"
+                  min={0}
+                  max={10000}
+                  className="h-8 w-20 text-center"
+                  value={counts[status.code] ?? 0}
+                  onChange={(event) =>
+                    setCounts((current) => ({
+                      ...current,
+                      [status.code]: Math.max(0, Number(event.target.value) || 0),
+                    }))
+                  }
+                  aria-label={`${status.label} headcount`}
+                />
+              </div>
+            ))}
+            {workingStatuses.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No working shifts configured.</p>
+            ) : null}
           </CardContent>
         </Card>
 

@@ -2,20 +2,22 @@
 
 Every employee holds a **fixed shift** for the roster period (their
 ``default_shift``, or a balanced shift derived from ``rotation_offset`` when it
-is unset). A period-level allocation moves employees between shifts only when
-the preferred shift mix cannot cover the configured demand, so people stay on
-one shift instead of rotating every day.
+is unset). A period-level allocation moves employees between shifts only until
+every shift has its configured headcount, so people stay on one shift instead
+of rotating every day.
+
+Staffing requirements are **shift headcounts for the whole period**, not daily
+coverage. A requirement of six general-shift employees means six people belong
+to the general shift; on any given day some of those six may be on their
+week-off or leave. The generator therefore never adds extra days off just to
+match a daily number, and it never recalls somebody from a planned week-off.
 
 Week-offs are per employee: each person gets the ``WEEK_OFF_DAYS`` consecutive
 weekdays starting at their configured ``week_off_start_day`` (for example
 Saturday–Sunday or Monday–Tuesday).
 
-Staffing requirements are the correction layer. They can add an extra day off
-and they move employees between shifts when the fixed-shift mix does not cover
-a shift. An employee's planned week-off block is never recalled: if
-requirements ask for more people than are available, the gap is reported as a
-shortage so the administrator can adjust staffing or the employee week-offs.
-Fairness counters keep these corrections deterministic and balanced.
+If the configured headcounts need more people than are available, the gap is
+reported as a shortage so the administrator can adjust staffing.
 
 The implementation is intentionally a straightforward heuristic rather than an
 optimiser. It is deterministic for identical inputs and reports shortages
@@ -26,7 +28,7 @@ step can be moved to the ``Generator`` Durable Object if the Worker CPU budget
 requires it.
 """
 
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, TypedDict
@@ -81,7 +83,7 @@ class GenerationInputs:
     month: int
     employees: list[GenerationEmployee] = field(default_factory=list)
     statuses: list[GenerationStatus] = field(default_factory=list)
-    requirements: dict[int, dict[str, int]] = field(default_factory=dict)
+    requirements: dict[str, int] = field(default_factory=dict)
     availability: dict[tuple[int, date], str] = field(default_factory=dict)
     holidays: dict[date, str] = field(default_factory=dict)
 
@@ -90,16 +92,13 @@ class GenerationInputs:
         return month_bounds(self.year, self.month)
 
 
-def _load_requirements(db: Session) -> dict[int, dict[str, int]]:
-    requirements: dict[int, dict[str, int]] = defaultdict(dict)
+def _load_requirements(db: Session) -> dict[str, int]:
     rows = db.execute(
         select(StaffingRequirement, ShiftStatus)
         .join(ShiftStatus, StaffingRequirement.status_id == ShiftStatus.id)
         .where(ShiftStatus.is_working.is_(True))
     ).all()
-    for requirement, status in rows:
-        requirements[requirement.weekday][status.code] = requirement.required_count
-    return requirements
+    return {status.code: requirement.required_count for requirement, status in rows}
 
 
 def load_generation_inputs(db: Session, period: RosterPeriod) -> GenerationInputs:
@@ -169,7 +168,7 @@ def inputs_to_payload(inputs: GenerationInputs) -> dict[str, Any]:
             }
             for status in inputs.statuses
         ],
-        "requirements": {str(weekday): values for weekday, values in inputs.requirements.items()},
+        "requirements": dict(inputs.requirements),
         "availability": [
             {"employee_id": employee_id, "date": day.isoformat(), "kind": kind}
             for (employee_id, day), kind in inputs.availability.items()
@@ -204,8 +203,7 @@ def inputs_from_payload(payload: dict[str, Any]) -> GenerationInputs:
             for item in payload.get("statuses", [])
         ],
         requirements={
-            int(weekday): {str(code): int(count) for code, count in values.items()}
-            for weekday, values in payload.get("requirements", {}).items()
+            str(code): int(count) for code, count in payload.get("requirements", {}).items()
         },
         availability={
             (int(item["employee_id"]), date.fromisoformat(item["date"])): str(item["kind"])
@@ -216,16 +214,6 @@ def inputs_from_payload(payload: dict[str, Any]) -> GenerationInputs:
             for item in payload.get("holidays", [])
         },
     )
-
-
-def _default_requirements(working_codes: list[str], employee_count: int) -> dict[str, int]:
-    if not working_codes:
-        return {}
-    working_target = max(len(working_codes), round(max(employee_count, 1) * 0.8))
-    base = max(1, working_target // len(working_codes))
-    result = {code: base for code in working_codes}
-    result[working_codes[0]] += max(0, working_target - base * len(working_codes))
-    return result
 
 
 def _fixed_shift(employee: GenerationEmployee, working_codes: list[str]) -> str:
@@ -242,51 +230,25 @@ def _is_week_off(employee: GenerationEmployee, current: date) -> bool:
     return (current.weekday() - employee.week_off_start_day) % 7 < WEEK_OFF_DAYS
 
 
-def _period_targets(
-    requirements: dict[int, dict[str, int]],
-    working_codes: list[str],
-    employee_count: int,
-) -> dict[str, int]:
-    """Allocate employee headcount to shifts in proportion to weekly demand."""
-
-    demand = {
-        code: sum(requirements.get(weekday, {}).get(code, 0) for weekday in range(7))
-        for code in working_codes
-    }
-    total = sum(demand.values())
-    if total <= 0 or employee_count <= 0:
-        return {}
-
-    raw = {code: demand[code] * employee_count / total for code in working_codes}
-    targets = {code: int(raw[code]) for code in working_codes}
-    remaining = employee_count - sum(targets.values())
-    order = sorted(
-        working_codes,
-        key=lambda code: (-(raw[code] - targets[code]), working_codes.index(code)),
-    )
-    for index in range(remaining):
-        targets[order[index % len(order)]] += 1
-    return targets
-
-
 def _assign_base_shifts(
     employees: list[GenerationEmployee],
     working_codes: list[str],
-    requirements: dict[int, dict[str, int]],
+    requirements: dict[str, int],
 ) -> dict[int, str]:
     """Pick one shift per employee for the whole period.
 
-    Employees start on their preferred shift. When that shift is over-supplied
-    relative to the period demand, auto-assigned employees are moved first so
-    explicit shift preferences survive wherever coverage allows.
+    Each configured requirement is a minimum headcount for that shift. Employees
+    start on their preferred shift and are only moved out of shifts that exceed
+    their headcount. Auto-assigned employees move before explicit preferences,
+    and any extra employees stay on their preferred shift.
     """
 
     preferred = {employee.id: _fixed_shift(employee, working_codes) for employee in employees}
     if not requirements or not employees:
         return preferred
 
-    targets = _period_targets(requirements, working_codes, len(employees))
-    if not targets:
+    targets = {code: max(0, requirements.get(code, 0)) for code in working_codes}
+    if not any(targets.values()):
         return preferred
 
     base = dict(preferred)
@@ -296,7 +258,7 @@ def _assign_base_shifts(
             candidates = [
                 employee
                 for employee in employees
-                if counts[base[employee.id]] > targets[base[employee.id]]
+                if counts[base[employee.id]] > targets.get(base[employee.id], 0)
             ]
             if not candidates:
                 break
@@ -337,154 +299,59 @@ def compute_roster(
     if HOLIDAY_CODE not in status_by_code:
         raise RuntimeError("The holiday status (H) is not configured")
 
-    configured = inputs.requirements
-    using_defaults = not configured
-    if using_defaults:
+    configured = {
+        code: count
+        for code, count in inputs.requirements.items()
+        if code in working_codes and count > 0
+    }
+    if not configured:
         warnings.append(
-            "No staffing requirements configured. Default coverage was derived from team size."
+            "No staffing requirements configured. Employees keep their preferred shifts."
         )
 
     availability = inputs.availability
     holidays = inputs.holidays
 
-    off_counts: dict[int, int] = {employee.id: 0 for employee in employees}
-    move_counts: dict[int, int] = {employee.id: 0 for employee in employees}
-
-    # One stable shift per employee for the period. Employees are only moved
-    # between shifts when their preferred shift is over-subscribed.
+    # One stable shift per employee for the period. Employees only move when a
+    # shift is below its configured headcount.
     base_shift = _assign_base_shifts(employees, working_codes, configured)
 
-    rows: list[AssignmentRow] = []
     shortages: list[ShortageRow] = []
+    if configured:
+        assigned_counts = Counter(base_shift.values())
+        for code in working_codes:
+            required = configured.get(code, 0)
+            assigned = assigned_counts.get(code, 0)
+            if assigned < required:
+                shortages.append(
+                    {
+                        "date": first.isoformat(),
+                        "status_code": code,
+                        "required": required,
+                        "assigned": assigned,
+                    }
+                )
 
+    rows: list[AssignmentRow] = []
     for ordinal in range(first.toordinal(), last.toordinal() + 1):
         current = date.fromordinal(ordinal)
-        holiday_label = holidays.get(current)
-
-        if holiday_label is not None:
+        if current in holidays:
             for employee in employees:
                 rows.append(
                     {"employee_id": employee.id, "date": current, "status_code": HOLIDAY_CODE}
                 )
             continue
 
-        base_rows: list[AssignmentRow] = []
-        eligible: list[GenerationEmployee] = []
         for employee in employees:
             kind = availability.get((employee.id, current))
             if kind == AvailabilityKind.leave:
-                base_rows.append(
-                    {"employee_id": employee.id, "date": current, "status_code": LEAVE_CODE}
-                )
+                code = LEAVE_CODE
             elif kind == AvailabilityKind.comp_off:
-                base_rows.append(
-                    {"employee_id": employee.id, "date": current, "status_code": COMP_OFF_CODE}
-                )
-            elif kind == AvailabilityKind.unavailable:
-                base_rows.append(
-                    {"employee_id": employee.id, "date": current, "status_code": OFF_CODE}
-                )
-                off_counts[employee.id] += 1
+                code = COMP_OFF_CODE
+            elif kind == AvailabilityKind.unavailable or _is_week_off(employee, current):
+                code = OFF_CODE
             else:
-                eligible.append(employee)
-
-        if not eligible:
-            rows.extend(base_rows)
-            continue
-
-        if using_defaults:
-            required = _default_requirements(working_codes, len(employees))
-        else:
-            required = dict(configured.get(current.weekday(), {}))
-        required = {
-            code: count for code, count in required.items() if count > 0 and code in working_codes
-        }
-
-        week_off = {employee.id for employee in eligible if _is_week_off(employee, current)}
-        pool = [employee for employee in eligible if employee.id not in week_off]
-
-        by_base: dict[str, list[GenerationEmployee]] = defaultdict(list)
-        for employee in pool:
-            by_base[base_shift[employee.id]].append(employee)
-
-        assignments: dict[int, str] = {}
-        off: set[int] = set(week_off)
-        shortfall: dict[str, int] = {}
-
-        # Give each shift the people whose base shift matches it. When a shift
-        # has more people than needed, the people with the most days off so far
-        # work first so off days stay balanced.
-        for code in working_codes:
-            need = required.get(code, 0)
-            group = by_base.get(code, [])
-            group.sort(
-                key=lambda employee: (
-                    -off_counts[employee.id],
-                    move_counts[employee.id],
-                    employee.rotation_offset,
-                    employee.id,
-                )
-            )
-            for employee in group[:need]:
-                assignments[employee.id] = code
-            for employee in group[need:]:
-                off.add(employee.id)
-            if len(group) < need:
-                shortfall[code] = need - len(group)
-
-        # Cover deficits with available people whose own shift has a surplus.
-        # Planned week-offs are never used as cover.
-        for code in working_codes:
-            deficit = shortfall.get(code, 0)
-            while deficit > 0:
-                candidates = [
-                    employee
-                    for employee in pool
-                    if employee.id in off and employee.id not in week_off
-                ]
-                if not candidates:
-                    break
-
-                def _cover_rank(
-                    employee: GenerationEmployee,
-                    by_base: dict[str, list[GenerationEmployee]] = by_base,
-                    required: dict[str, int] = required,
-                ) -> tuple:
-                    base_code = base_shift[employee.id]
-                    surplus = len(by_base.get(base_code, [])) - required.get(base_code, 0)
-                    return (
-                        surplus <= 0,
-                        -surplus,
-                        -off_counts[employee.id],
-                        move_counts[employee.id],
-                        employee.rotation_offset,
-                        employee.id,
-                    )
-
-                mover = min(candidates, key=_cover_rank)
-                off.discard(mover.id)
-                assignments[mover.id] = code
-                move_counts[mover.id] += 1
-                deficit -= 1
-
-        for code, need in required.items():
-            assigned = sum(1 for value in assignments.values() if value == code)
-            if assigned < need:
-                shortages.append(
-                    {
-                        "date": current.isoformat(),
-                        "status_code": code,
-                        "required": need,
-                        "assigned": assigned,
-                    }
-                )
-
-        for employee_id in off:
-            off_counts[employee_id] += 1
-
-        rows.extend(base_rows)
-        for employee in eligible:
-            code = assignments.get(employee.id, OFF_CODE)
+                code = base_shift[employee.id]
             rows.append({"employee_id": employee.id, "date": current, "status_code": code})
 
     warnings.append(

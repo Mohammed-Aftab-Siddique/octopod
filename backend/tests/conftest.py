@@ -114,15 +114,13 @@ def seeded():
         db.add_all(statuses)
         db.flush()
         status_by_code = {status.code: status for status in statuses}
-        for weekday in range(7):
-            for code in ("G", "M", "A", "N"):
-                db.add(
-                    StaffingRequirement(
-                        weekday=weekday,
-                        status_id=status_by_code[code].id,
-                        required_count=2,
-                    )
+        for code in ("G", "M", "A", "N"):
+            db.add(
+                StaffingRequirement(
+                    status_id=status_by_code[code].id,
+                    required_count=2,
                 )
+            )
 
         admin = User(
             email="admin@test.local",

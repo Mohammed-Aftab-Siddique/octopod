@@ -250,8 +250,8 @@ export function AdminRosterPage() {
                 <ul className="mt-1 max-h-32 overflow-y-auto text-xs text-red-700">
                   {generation.shortages.slice(0, 20).map((shortage) => (
                     <li key={`${shortage.date}-${shortage.status_code}`}>
-                      {formatDateOnly(shortage.date, "d MMM")} ·{" "}
-                      {shortage.status_code}: {shortage.assigned}/{shortage.required} assigned
+                      {shortage.status_code}: {shortage.assigned}/{shortage.required} people
+                      assigned to the shift
                     </li>
                   ))}
                 </ul>

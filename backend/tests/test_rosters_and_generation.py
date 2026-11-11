@@ -6,9 +6,7 @@ from conftest import login_headers
 
 def _set_requirements(client, headers, count_per_shift):
     requirements = [
-        {"weekday": weekday, "status_code": code, "required_count": count_per_shift}
-        for weekday in range(7)
-        for code in ("G", "M", "A", "N")
+        {"status_code": code, "required_count": count_per_shift} for code in ("G", "M", "A", "N")
     ]
     response = client.put(
         "/api/v1/reference/staffing-requirements",
@@ -271,10 +269,10 @@ def test_generation_never_recalls_planned_week_off(client, seeded):
     _set_requirements(client, headers, 1)
     roster = _create_roster(client, headers)
 
-    # Put everyone off on the same weekend pair so coverage is impossible on
-    # those days. The generator must keep the week-off and report a shortage
-    # instead of recalling anybody. Start days are internal now, so set them
-    # directly instead of going through the employee API.
+    # Put everyone off on the same weekend pair. Shift headcounts are still
+    # met, so this is not a shortage: the generator must keep the planned
+    # week-off and never recall anybody. Start days are internal now, so set
+    # them directly instead of going through the employee API.
     from sqlalchemy import select
 
     from app.db.session import get_sessionmaker
@@ -297,8 +295,7 @@ def test_generation_never_recalls_planned_week_off(client, seeded):
     }
     assert weekend_dates
     assert all(item["status_code"] == "O" for item in assignments if item["date"] in weekend_dates)
-    shortage_dates = {shortage["date"] for shortage in result["shortages"]}
-    assert weekend_dates <= shortage_dates
+    assert result["shortages"] == []
 
 
 def test_delete_roster_removes_assignments_and_history(client, seeded):
@@ -347,9 +344,7 @@ def test_fixed_shift_is_used_and_validated(client, seeded):
         assert response.status_code == 200, response.text
         assert response.json()["default_shift"] == "G"
 
-    requirements = [
-        {"weekday": weekday, "status_code": "G", "required_count": 4} for weekday in range(7)
-    ]
+    requirements = [{"status_code": "G", "required_count": 4}]
     saved = client.put(
         "/api/v1/reference/staffing-requirements",
         headers=headers,
@@ -392,7 +387,7 @@ def test_shift_preferences_stay_stable_across_the_period():
         )
         for index in range(1, 13)
     ]
-    requirements = {weekday: {code: 1 for code in ("G", "M", "A", "N")} for weekday in range(7)}
+    requirements = {code: 1 for code in ("G", "M", "A", "N")}
     rows, shortages, _ = compute_roster(
         GenerationInputs(
             year=2026,
@@ -416,6 +411,54 @@ def test_shift_preferences_stay_stable_across_the_period():
         }
         # An explicit preference is not rotated through other shifts.
         assert set(worked) == {employee.default_shift}
+
+
+def test_shift_headcount_includes_people_on_week_off():
+    from app.services.generation import (
+        GenerationEmployee,
+        GenerationInputs,
+        GenerationStatus,
+        compute_roster,
+    )
+
+    statuses = [
+        GenerationStatus(code=code, is_working=code in {"G", "M", "A", "N"}, sort_order=order)
+        for order, code in enumerate(["G", "M", "A", "N", "L", "CO", "O", "H"], start=1)
+    ]
+    employees = [
+        GenerationEmployee(
+            id=index,
+            rotation_offset=index - 1,
+            default_shift="G",
+            week_off_start_day=5,  # Saturday–Sunday
+        )
+        for index in range(1, 7)
+    ]
+    rows, shortages, _ = compute_roster(
+        GenerationInputs(
+            year=2026,
+            month=11,
+            employees=employees,
+            statuses=statuses,
+            requirements={"G": 6},
+        )
+    )
+
+    assert shortages == []
+    for row in rows:
+        is_weekend = row["date"].weekday() in (5, 6)
+        assert row["status_code"] == ("O" if is_weekend else "G")
+
+
+def test_staffing_requirements_are_one_headcount_per_shift(client, seeded):
+    headers = login_headers(client, "admin@test.local", "Admin123!")
+    response = client.put(
+        "/api/v1/reference/staffing-requirements",
+        headers=headers,
+        json={"requirements": [{"status_code": "G", "required_count": 6}]},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == [{"status_code": "G", "required_count": 6}]
 
 
 def test_generation_uses_employee_week_off_pair(client, seeded):
@@ -451,18 +494,10 @@ def test_generation_uses_employee_week_off_pair(client, seeded):
             employee.id: employee.week_off_start_day for employee in db.scalars(select(Employee))
         }
 
-    # Require exactly the number of people who are not on their planned
-    # week-off, so the generator adds no extra days off and recalls nobody.
-    requirements = []
-    for weekday in range(7):
-        off = sum(1 for start in start_days.values() if (weekday - start) % 7 < 2)
-        requirements.append(
-            {
-                "weekday": weekday,
-                "status_code": "G",
-                "required_count": len(start_days) - off,
-            }
-        )
+    # The headcount is the number of people who belong to the shift. Some of
+    # them are on their week-off each day; that is expected and is not a
+    # shortage.
+    requirements = [{"status_code": "G", "required_count": len(start_days)}]
     response = client.put(
         "/api/v1/reference/staffing-requirements",
         headers=headers,

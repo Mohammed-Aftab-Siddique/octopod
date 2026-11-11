@@ -119,7 +119,6 @@ export interface GenerationResult {
 }
 
 export interface StaffingRequirement {
-  weekday: number;
   status_code: string;
   required_count: number;
 }

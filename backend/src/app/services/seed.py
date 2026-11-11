@@ -67,22 +67,9 @@ def ensure_staffing_requirements(db: Session) -> None:
     if db.scalar(select(StaffingRequirement.id)):
         return
     statuses = {status.code: status for status in db.scalars(select(ShiftStatus))}
-    defaults = {
-        0: {"G": 4, "M": 3, "A": 3, "N": 3},
-        1: {"G": 4, "M": 3, "A": 3, "N": 3},
-        2: {"G": 4, "M": 3, "A": 3, "N": 3},
-        3: {"G": 4, "M": 3, "A": 3, "N": 3},
-        4: {"G": 4, "M": 3, "A": 3, "N": 3},
-        5: {"G": 3, "M": 2, "A": 2, "N": 2},
-        6: {"G": 3, "M": 2, "A": 2, "N": 2},
-    }
-    for weekday, values in defaults.items():
-        for code, count in values.items():
-            db.add(
-                StaffingRequirement(
-                    weekday=weekday, status_id=statuses[code].id, required_count=count
-                )
-            )
+    defaults = {"G": 4, "M": 3, "A": 3, "N": 3}
+    for code, count in defaults.items():
+        db.add(StaffingRequirement(status_id=statuses[code].id, required_count=count))
     db.commit()
 
 

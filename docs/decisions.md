@@ -16,7 +16,7 @@ Employees hold a **primary shift** for the roster period rather than rotating
 through every shift each day. The shift is `default_shift` when set; otherwise
 it is derived from `rotation_offset` (`working_shifts[offset % count]`) so a
 new team is balanced automatically. A period-level allocation moves employees
-between shifts only when the preferred shift mix cannot cover demand, so
+between shifts only until each shift reaches its configured headcount, so
 explicit preferences stay stable across the month.
 
 Week-offs are a **per-employee choice**: each person selects two consecutive
@@ -28,14 +28,14 @@ start from the rotation offset if the field is omitted entirely. Week-offs are
 not recorded as availability; that picker only covers leave, comp-off, and
 unavailable dates.
 
-Staffing requirements are the correction layer: when a shift is over-staffed
-they can add a day off, and they can move an employee to another shift. A
-planned week-off block is never recalled. When requirements ask for more people
-than are available after leave, comp-off, unavailable dates, and week-offs, the
-gap is reported as a shortage for the administrator to resolve. Fairness
-counters keep corrections deterministic and balanced. This matches the
-business roster: a person stays in their shift for the month, keeps their
-week-off block, and moves only for coverage.
+Staffing requirements are **shift headcounts for the whole month**, configured
+as one number per shift rather than a value for every weekday. A headcount of
+six general-shift employees means six people belong to the general shift; on
+any given day some of them may be on their week-off or leave. Generation does
+not add extra days off to match a daily coverage number and never recalls an
+employee from a planned week-off. If the configured headcounts need more people
+than are available, the gap is reported as a shortage for the administrator to
+resolve.
 
 ## 3. Holidays are per-month and use the `H` code
 

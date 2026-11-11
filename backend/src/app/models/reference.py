@@ -20,11 +20,17 @@ class ShiftStatus(Base):
 
 
 class StaffingRequirement(Base):
+    """Target headcount for a shift.
+
+    The count is the number of employees assigned to the shift for the whole
+    roster period, not a daily coverage figure. Employees on their planned
+    week-off are still part of the shift headcount.
+    """
+
     __tablename__ = "staffing_requirements"
-    __table_args__ = (UniqueConstraint("weekday", "status_id", name="uq_staffing_weekday_status"),)
+    __table_args__ = (UniqueConstraint("status_id", name="uq_staffing_status"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    weekday: Mapped[int] = mapped_column(Integer)  # 0 = Monday, 6 = Sunday
     status_id: Mapped[int] = mapped_column(ForeignKey("shift_statuses.id", ondelete="CASCADE"))
     required_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 

@@ -21,9 +21,8 @@ standards, [`SOP.md`](./SOP.md) for the user guide, and
 - Approved leave, comp-off, and unavailable dates (date ranges).
 - Monthly roster drafts rendered as an employee × date grid with sticky headers.
 - Seven statuses plus a holiday `H` code, all colour-coded with a legend.
-- Assisted generation with a stable primary shift per employee, a global
-  consecutive week-off policy, staffing requirements, leave exclusion, and
-  shortage reporting.
+- Assisted generation with a stable primary shift per employee, per-employee
+  week-offs, monthly shift headcounts, leave exclusion, and shortage reporting.
 - Explicit publish approval, immutable published versions, and archived history.
 - Employee self-view (own row by default) and full-team read-only view.
 - PNG export rendered client-side (month, dates, names, statuses, and legend).
@@ -171,16 +170,16 @@ Generation is deterministic backend logic (no external optimiser):
 2. Holidays receive the `H` status for everyone.
 3. Each employee keeps a stable primary shift for the month (`default_shift`,
    or a balanced shift derived from `rotation_offset`). A period-level
-   allocation only moves employees between shifts when the preferred mix cannot
-   cover demand, so explicit preferences stay stable. Week-off blocks use the
-   global **Consecutive days off** setting in Settings; start days are staggered
-   automatically from the rotation offset.
-4. Staffing requirements for the weekday drive coverage. The generator can add
-   a day off and move employees to another shift when the fixed-shift mix cannot
-   cover it, while tracking fairness counters. It never recalls an employee from
-   their planned week-off block.
-5. Shortages are returned for administrator review when requirements exceed the
-   people available after leave, comp-off, unavailable dates, and week-offs.
+   allocation only moves employees between shifts until each shift reaches its
+   configured headcount, so explicit preferences stay stable. Each employee
+   keeps their own two-day week-off pair.
+4. Staffing requirements are monthly headcounts per shift, configured as one
+   number per shift. Employees on their week-off still count towards their
+   shift's headcount, so the generator does not add extra days off or move
+   employees to cover daily numbers. It never recalls an employee from their
+   planned week-off block.
+5. Shortages are returned for administrator review when the configured shift
+   headcounts need more people than are available.
    Generated rosters are always drafts and require explicit publish approval.
 
 Generation never auto-publishes. Publishing archives the previously published

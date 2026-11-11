@@ -67,8 +67,9 @@ clear calendar-style presentation.
     selected month.
 -   Use the employee list, employee availability, approved leave, and
     other configured constraints as inputs.
--   Allow administrators to specify the required number of employees for
-    each shift on each day, or for applicable days and shift patterns.
+-   Allow administrators to specify the required number of employees who
+    belong to each shift for the month. Employees on their week-off still count
+    towards that shift's headcount.
 -   Avoid assigning employees to shifts on dates when they are
     unavailable or on approved leave.
 -   Respect configured shift and scheduling constraints.

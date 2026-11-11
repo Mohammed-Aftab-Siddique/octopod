@@ -17,7 +17,6 @@ class ShiftStatusOut(BaseModel):
 
 
 class StaffingRequirementIn(BaseModel):
-    weekday: int = Field(ge=0, le=6)
     status_code: str = Field(min_length=1, max_length=8)
     required_count: int = Field(ge=0, le=10_000)
 
@@ -27,7 +26,6 @@ class StaffingRequirementsPut(BaseModel):
 
 
 class StaffingRequirementOut(BaseModel):
-    weekday: int
     status_code: str
     required_count: int
 

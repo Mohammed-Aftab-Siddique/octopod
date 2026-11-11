@@ -27,7 +27,6 @@ def list_requirements(db: Session) -> list[StaffingRequirementOut]:
     ).all()
     return [
         StaffingRequirementOut(
-            weekday=requirement.weekday,
             status_code=shift_status.code,
             required_count=requirement.required_count,
         )
@@ -39,7 +38,7 @@ async def replace_requirements(
     db: Session, payload: StaffingRequirementsPut, *, env=None
 ) -> list[StaffingRequirementOut]:
     statuses = {item.code: item for item in db.scalars(select(ShiftStatus))}
-    seen: set[tuple[int, str]] = set()
+    seen: set[str] = set()
     for requirement in payload.requirements:
         code = requirement.status_code.upper()
         if code not in statuses or not statuses[code].is_working:
@@ -47,18 +46,16 @@ async def replace_requirements(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Status {requirement.status_code} is not a working shift",
             )
-        key = (requirement.weekday, code)
-        if key in seen:
+        if code in seen:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Duplicate weekday/status requirement",
+                detail="Duplicate shift requirement",
             )
-        seen.add(key)
+        seen.add(code)
 
     if has_binding(env):
         values = [
             (
-                requirement.weekday,
                 statuses[requirement.status_code.upper()].id,
                 requirement.required_count,
             )
@@ -68,7 +65,7 @@ async def replace_requirements(
         statements.extend(
             multi_row_insert(
                 "staffing_requirements",
-                ["weekday", "status_id", "required_count"],
+                ["status_id", "required_count"],
                 values,
             )
         )
@@ -80,7 +77,6 @@ async def replace_requirements(
     for requirement in payload.requirements:
         db.add(
             StaffingRequirement(
-                weekday=requirement.weekday,
                 status_id=statuses[requirement.status_code.upper()].id,
                 required_count=requirement.required_count,
             )
