@@ -1,3 +1,12 @@
+import { useMemo, useState } from "react";
+
+import { Select } from "@/components/ui/select";
+import {
+  ROSTER_SORT_OPTIONS,
+  employeeShiftCodes,
+  sortRosterEmployees,
+  type RosterSortKey,
+} from "@/lib/rosterSort";
 import type { RosterAssignment, RosterDay, RosterEmployee, RosterGrid as Grid, ShiftStatus } from "@/lib/types";
 import { cn, todayIso } from "@/lib/utils";
 
@@ -16,6 +25,7 @@ export function RosterGrid({
   highlightEmployeeId = null,
   onEdit,
 }: RosterGridProps) {
+  const [sortKey, setSortKey] = useState<RosterSortKey>("default");
   const statusByCode = new Map<string, ShiftStatus>(
     grid.statuses.map((status) => [status.code, status]),
   );
@@ -24,13 +34,44 @@ export function RosterGrid({
     assignmentMap.set(`${assignment.employee_id}:${assignment.date}`, assignment);
   }
 
-  const employees = employeeFilterId
-    ? grid.employees.filter((employee) => employee.id === employeeFilterId)
-    : grid.employees;
+  const filteredEmployees = useMemo(
+    () =>
+      employeeFilterId
+        ? grid.employees.filter((employee) => employee.id === employeeFilterId)
+        : grid.employees,
+    [grid.employees, employeeFilterId],
+  );
+  const employees = useMemo(
+    () => sortRosterEmployees(filteredEmployees, grid.assignments, grid.statuses, sortKey),
+    [filteredEmployees, grid.assignments, grid.statuses, sortKey],
+  );
+  const employeeShifts = useMemo(
+    () => employeeShiftCodes(employees, grid.assignments, grid.statuses),
+    [employees, grid.assignments, grid.statuses],
+  );
   const today = todayIso();
 
   return (
-    <div className="scrollbar-thin max-h-[76vh] overflow-auto rounded-lg border bg-card">
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <label htmlFor="roster-sort" className="text-xs font-medium text-muted-foreground">
+          Sort by
+        </label>
+        <Select
+          id="roster-sort"
+          aria-label="Sort roster"
+          value={sortKey}
+          onChange={(event) => setSortKey(event.target.value as RosterSortKey)}
+          className="h-8 w-auto min-w-[190px] text-xs"
+        >
+          {ROSTER_SORT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="scrollbar-thin max-h-[76vh] overflow-auto rounded-lg border bg-card">
       <table className="w-max border-collapse text-xs">
         <caption className="sr-only">
           {grid.status === "draft" ? "Draft" : "Published"} roster for {grid.employees.length}{" "}
@@ -89,6 +130,7 @@ export function RosterGrid({
                 </span>
                 <span className="block text-[10px] text-muted-foreground">
                   {employee.employee_code}
+                  {employeeShifts.has(employee.id) ? ` · ${employeeShifts.get(employee.id)}` : ""}
                 </span>
               </th>
               {grid.days.map((day) => {
@@ -151,6 +193,7 @@ export function RosterGrid({
           ) : null}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

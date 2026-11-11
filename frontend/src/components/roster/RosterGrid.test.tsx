@@ -65,7 +65,9 @@ describe("RosterGrid", () => {
     render(<RosterGrid grid={grid} />);
 
     expect(screen.getByRole("table")).toBeInTheDocument();
-    expect(screen.getByRole("rowheader", { name: /Employee One/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("rowheader", { name: /Employee One/ }),
+    ).toBeInTheDocument();
     // Two rows x two days = four cells, none of which should be buttons.
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(screen.getByText(/General/)).toBeInTheDocument();
@@ -73,21 +75,69 @@ describe("RosterGrid", () => {
 
   it("calls onEdit for editable cells", () => {
     const onEdit = vi.fn();
-    render(<RosterGrid grid={{ ...grid, status: "draft" }} editable onEdit={onEdit} />);
+    render(
+      <RosterGrid
+        grid={{ ...grid, status: "draft" }}
+        editable
+        onEdit={onEdit}
+      />,
+    );
 
     const buttons = screen.getAllByRole("button");
     expect(buttons).toHaveLength(4);
     fireEvent.click(buttons[0]);
-    expect(onEdit).toHaveBeenCalledWith(
-      grid.employees[0],
-      grid.days[0],
-      "G",
-    );
+    expect(onEdit).toHaveBeenCalledWith(grid.employees[0], grid.days[0], "G");
   });
 
   it("filters to a single employee when requested", () => {
     render(<RosterGrid grid={grid} employeeFilterId={2} />);
-    expect(screen.getByRole("rowheader", { name: /Employee Two/ })).toBeInTheDocument();
-    expect(screen.queryByRole("rowheader", { name: /Employee One/ })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("rowheader", { name: /Employee Two/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("rowheader", { name: /Employee One/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("sorts rows by shift and by name", () => {
+    const sortable: Grid = {
+      ...grid,
+      employees: [
+        { id: 1, employee_code: "E002", full_name: "Zed" },
+        { id: 2, employee_code: "E001", full_name: "Amy" },
+      ],
+      assignments: [
+        { employee_id: 1, date: "2026-11-01", status_code: "G" },
+        { employee_id: 2, date: "2026-11-01", status_code: "M" },
+      ],
+      statuses: [
+        ...grid.statuses,
+        {
+          id: 3,
+          code: "M",
+          label: "Morning",
+          color: "#E5E7EB",
+          text_color: "#111827",
+          is_working: true,
+          sort_order: 3,
+        },
+      ],
+    };
+
+    render(<RosterGrid grid={sortable} />);
+    const rows = () =>
+      screen.getAllByRole("rowheader").map((row) => row.textContent ?? "");
+
+    expect(rows()[0]).toContain("Zed");
+    fireEvent.change(screen.getByLabelText("Sort roster"), {
+      target: { value: "shift" },
+    });
+    expect(rows()[0]).toContain("Zed");
+
+    fireEvent.change(screen.getByLabelText("Sort roster"), {
+      target: { value: "name" },
+    });
+    expect(rows()[0]).toContain("Amy");
+    expect(rows()[1]).toContain("Zed");
   });
 });
