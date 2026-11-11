@@ -120,18 +120,18 @@ Notes:
 
 Run the steps in this order each month. Later steps depend on earlier data.
 
-1. **Employees** — confirm active staff, primary shifts, week-off days, and
-   rotation offsets.
+1. **Employees** — confirm active staff, primary shifts, and rotation offsets.
 2. **Employees → Availability** — record approved leave, comp-off, and
    unavailable dates.
-3. **Settings → Holidays** — add public/company holidays for the month.
-4. **Settings → Staffing requirements** — set required headcount per weekday and
+3. **Settings → Week-off policy** — set the exact consecutive days off each week.
+4. **Settings → Holidays** — add public/company holidays for the month.
+5. **Settings → Staffing requirements** — set required headcount per weekday and
    working shift.
-5. **Rosters** — select the month and select **New draft**.
-6. Open the draft and select **Generate**.
-7. **Review** the generated grid and correct individual cells.
-8. **Publish** the draft after review.
-9. **Export PNG** if a printable/shareable copy is needed.
+6. **Rosters** — select the month and select **New draft**.
+7. Open the draft and select **Generate**.
+8. **Review** the generated grid and correct individual cells.
+9. **Publish** the draft after review.
+10. **Export PNG** if a printable/shareable copy is needed.
 
 Generation never publishes automatically. Publishing is always an explicit,
 confirmed action.
@@ -165,10 +165,11 @@ Adding an employee also creates their login account with the **employee** role.
 Share the initial password securely and ask them to change it.
 
 **Primary shift** sets the shift the employee keeps for the month. Leave it on
-**Auto** to derive a balanced shift from the rotation offset. **Week-off days**
-selects the employee's two consecutive days off (for example Monday–Tuesday or
-Sunday–Monday). The generator adds that pair to every draft automatically. The
-rotation offset is assigned automatically as the next offset (see §10).
+**Auto** to derive a balanced shift from the rotation offset. The generator
+keeps that shift stable and only moves the employee when coverage cannot be met
+otherwise. Week-off length is not set per employee; use **Settings → Week-off
+policy** instead. The rotation offset is assigned automatically as the next
+offset (see §10).
 
 ### Edit an employee
 
@@ -248,8 +249,8 @@ Rules and behaviour:
   - **Compensatory off** → `CO`
   - **Unavailable** → `O`
   - A configured **holiday** overrides availability and gives everyone `H`.
-- Week-offs are not recorded as availability. Set the employee's **Week-off
-  days** on the Employees page instead.
+- Week-offs are not recorded as availability. They follow the global **Week-off
+  policy** in Settings instead.
 
 ### Remove availability
 
@@ -284,7 +285,25 @@ Important:
   warning to the result.
 - Requirements are applied by **weekday**, not by specific calendar date.
 
-### 8.2 Holidays
+### 8.2 Week-off policy
+
+Use the **Week-off policy** card to set the exact number of consecutive days off
+each employee receives every week.
+
+1. Enter a value from 1 to 6 in **Consecutive days off**.
+2. Select **Save policy**.
+
+Rules:
+
+- The setting applies to the whole organisation, not to one employee.
+- Start days stay staggered automatically from each employee's rotation offset,
+  so not everyone is off on the same day.
+- Generation treats the week-off block as fixed and never recalls an employee
+  from it. Reduce staffing requirements or the block length if coverage cannot
+  be met.
+- The value is stored as an exact count; there is no minimum/maximum range.
+
+### 8.3 Holidays
 
 1. Use the month selector in the **Holidays** card to choose the month.
 2. Enter a **Date** within that month and a **Label**.
@@ -300,7 +319,7 @@ Rules:
 - Holiday changes affect **generation**. Regenerate a draft to apply them.
 - Holidays are stored per date; the month selector only filters the list.
 
-### 8.3 Status legend
+### 8.4 Status legend
 
 The **Status legend** card lists the configured status codes, labels, and
 colours. Use it to confirm what each code means before reviewing a roster.
@@ -428,8 +447,9 @@ You do not need this to use the app, but it explains the output.
 - Each employee has a **primary shift** for the month. It is either the
   **Primary shift** set on the Employees page, or (when set to **Auto**) the
   balanced shift `working_shifts[rotation_offset % count]`.
-- Each employee gets the **Week-off days** pair chosen on the Employees page
-  (`week_off_start_day` and the following day). The pair repeats every week.
+- Each employee gets a week-off block of the globally configured length
+  (**Settings → Week-off policy**). Start days are staggered automatically from
+  the rotation offset and the block repeats every week.
 - Holidays override everything: all employees receive `H`.
 - Availability overrides the week-off plan:
   - leave → `L`
@@ -440,16 +460,17 @@ You do not need this to use the app, but it explains the output.
     employees with the fewest days off so far.
   - Planned week-offs are never recalled. If requirements ask for more people
     than are available after leave, comp-off, unavailable dates, and week-offs,
-    the gap is reported as a staffing shortage. Reduce the requirement or
-    change the employee's week-off pair.
-  - Employees keep their primary shift. They are moved to another shift only
-    when the fixed-shift mix cannot cover a configured shift.
-- Ties are broken by primary-shift match, per-shift counts, total work counts,
+    the gap is reported as a staffing shortage. Reduce the requirement or the
+    global week-off length.
+  - Employees keep their primary shift. A period-level allocation moves them to
+    another shift only when the preferred shift mix cannot cover demand; daily
+    changes happen only when someone on their base shift is off or on leave.
+- Ties are broken by surplus shift capacity, days off so far, move count,
   rotation offset, and employee ID, in that order.
 - Remaining gaps are reported as shortages rather than hidden.
 
 This produces the intended pattern: a person stays in their shift for the
-month, keeps their chosen week-off pair, and moves only for coverage. It is a
+month, keeps their week-off block, and moves only for coverage. It is a
 heuristic, not an optimiser; always review the draft.
 
 ---
@@ -495,8 +516,8 @@ heuristic, not an optimiser; always review the draft.
 ## 13. Monthly checklist (administrator)
 
 - [ ] Confirm the employee list is current; deactivate leavers and add new staff.
-- [ ] Set or verify each employee's primary shift, week-off days, and rotation
-      offset.
+- [ ] Set or verify each employee's primary shift and rotation offset.
+- [ ] Confirm the global **Week-off policy** in Settings.
 - [ ] Enter all approved leave, comp-off, and unavailable dates.
 - [ ] Add this month's holidays in **Settings**.
 - [ ] Review **Staffing requirements** for each weekday.
@@ -520,13 +541,13 @@ heuristic, not an optimiser; always review the draft.
 | View published roster | `My roster` |
 | Manage employees | `Employees` |
 | Record availability | `Employees → Availability` |
-| Staffing requirements and holidays | `Settings` |
+| Staffing requirements, week-off policy, holidays | `Settings` |
 | Create/generate/publish rosters | `Rosters` |
 | Employee default password | `Employee123!` |
 | Minimum password length | 8 characters |
 | Working statuses | `G`, `M`, `A`, `N` |
 | Non-working statuses | `L`, `CO`, `O`, `H` |
 | Shift model | Fixed primary shift per month |
-| Days off | `week_off_start_day` plus the following day (two consecutive days/week) |
+| Days off | Global exact consecutive-day block; staggered start per employee |
 | Drafts per month | One |
 | Roster export format | PNG |

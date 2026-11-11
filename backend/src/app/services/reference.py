@@ -6,13 +6,63 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.d1 import d1_batch, has_binding, multi_row_insert
-from app.models.reference import Holiday, ShiftStatus, StaffingRequirement
+from app.db.d1 import d1_batch, has_binding, multi_row_insert, utcnow_text
+from app.models.reference import AppSetting, Holiday, ShiftStatus, StaffingRequirement
 from app.schemas.reference import (
     HolidayCreate,
+    RosterSettingsOut,
+    RosterSettingsUpdate,
     StaffingRequirementOut,
     StaffingRequirementsPut,
 )
+
+CONSECUTIVE_OFF_DAYS_KEY = "consecutive_off_days"
+DEFAULT_CONSECUTIVE_OFF_DAYS = 2
+
+
+def get_roster_settings(db: Session) -> RosterSettingsOut:
+    """Return the organisation-wide week-off policy."""
+
+    setting = db.get(AppSetting, CONSECUTIVE_OFF_DAYS_KEY)
+    value = DEFAULT_CONSECUTIVE_OFF_DAYS
+    if setting is not None:
+        try:
+            value = int(setting.value)
+        except (TypeError, ValueError):
+            value = DEFAULT_CONSECUTIVE_OFF_DAYS
+    return RosterSettingsOut(consecutive_off_days=min(max(value, 1), 6))
+
+
+def get_consecutive_off_days(db: Session) -> int:
+    return get_roster_settings(db).consecutive_off_days
+
+
+async def save_roster_settings(
+    db: Session, payload: RosterSettingsUpdate, *, env=None
+) -> RosterSettingsOut:
+    value = str(payload.consecutive_off_days)
+    if has_binding(env):
+        await d1_batch(
+            env,
+            [
+                (
+                    "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) "
+                    "ON CONFLICT (key) DO UPDATE SET "
+                    "value = excluded.value, updated_at = excluded.updated_at",
+                    [CONSECUTIVE_OFF_DAYS_KEY, value, utcnow_text()],
+                )
+            ],
+        )
+        db.expire_all()
+        return get_roster_settings(db)
+
+    setting = db.get(AppSetting, CONSECUTIVE_OFF_DAYS_KEY)
+    if setting is None:
+        db.add(AppSetting(key=CONSECUTIVE_OFF_DAYS_KEY, value=value))
+    else:
+        setting.value = value
+    db.commit()
+    return get_roster_settings(db)
 
 
 def list_statuses(db: Session) -> list[ShiftStatus]:

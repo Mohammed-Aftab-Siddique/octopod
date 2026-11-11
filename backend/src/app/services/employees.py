@@ -76,11 +76,9 @@ async def create_employee(
         payload.rotation_offset if payload.rotation_offset is not None else max_offset + 1
     )
     default_shift = _normalise_default_shift(db, payload.default_shift)
-    week_off_start_day = (
-        payload.week_off_start_day
-        if payload.week_off_start_day is not None
-        else rotation_offset % 7
-    )
+    # Week-off blocks are staggered automatically. The exact block length is
+    # the organisation-wide policy in Settings.
+    week_off_start_day = rotation_offset % 7
     password_hash = await hash_password_remote(env, payload.password or DEFAULT_PASSWORD)
 
     if has_binding(env):
@@ -213,9 +211,6 @@ async def update_employee(
         if "default_shift" in payload.model_fields_set:
             employee_sets.append("default_shift = ?")
             employee_params.append(default_shift)
-        if payload.week_off_start_day is not None:
-            employee_sets.append("week_off_start_day = ?")
-            employee_params.append(payload.week_off_start_day)
         if payload.is_active is not None:
             employee_sets.append("is_active = ?")
             employee_params.append(1 if payload.is_active else 0)
@@ -266,8 +261,6 @@ async def update_employee(
         employee.rotation_offset = payload.rotation_offset
     if "default_shift" in payload.model_fields_set:
         employee.default_shift = default_shift
-    if payload.week_off_start_day is not None:
-        employee.week_off_start_day = payload.week_off_start_day
     if payload.is_active is not None:
         employee.is_active = payload.is_active
         if employee.user:

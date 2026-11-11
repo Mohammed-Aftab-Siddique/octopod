@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Save, Trash2 } from "lucide-react";
+import { CalendarOff, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -39,6 +39,7 @@ export function AdminSettingsPage() {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [consecutiveOffDays, setConsecutiveOffDays] = useState(2);
   const [month, setMonth] = useState(currentMonth);
 
   const statusesQuery = useQuery({
@@ -58,6 +59,16 @@ export function AdminSettingsPage() {
     queryKey: ["staffing-requirements"],
     queryFn: () => referenceApi.listRequirements(),
   });
+
+  const rosterSettingsQuery = useQuery({
+    queryKey: ["roster-settings"],
+    queryFn: () => referenceApi.getRosterSettings(),
+  });
+
+  useEffect(() => {
+    if (!rosterSettingsQuery.data) return;
+    setConsecutiveOffDays(rosterSettingsQuery.data.consecutive_off_days);
+  }, [rosterSettingsQuery.data]);
 
   const range = monthRange(month.year, month.month);
   const holidayForm = useForm<HolidayForm>({
@@ -91,6 +102,16 @@ export function AdminSettingsPage() {
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : "Unable to save requirements"),
+  });
+
+  const saveRosterSettings = useMutation({
+    mutationFn: () => referenceApi.saveRosterSettings(consecutiveOffDays),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["roster-settings"] });
+      setError(null);
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : "Unable to save week-off policy"),
   });
 
   const holidaysQuery = useQuery({
@@ -190,6 +211,49 @@ export function AdminSettingsPage() {
         </Card>
 
         <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarOff className="h-4 w-4" /> Week-off policy
+              </CardTitle>
+              <CardDescription>
+                Every employee gets this exact number of consecutive days off each week. Start
+                days are staggered automatically from the employee rotation offset.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="consecutive-off-days">Consecutive days off</Label>
+                  <Input
+                    id="consecutive-off-days"
+                    type="number"
+                    min={1}
+                    max={6}
+                    className="w-24"
+                    value={consecutiveOffDays}
+                    onChange={(event) =>
+                      setConsecutiveOffDays(
+                        Math.min(6, Math.max(1, Number(event.target.value) || 1)),
+                      )
+                    }
+                  />
+                </div>
+                <Button
+                  onClick={() => saveRosterSettings.mutate()}
+                  disabled={saveRosterSettings.isPending || rosterSettingsQuery.isLoading}
+                >
+                  <Save className="h-4 w-4" />
+                  {saveRosterSettings.isPending ? "Saving…" : "Save policy"}
+                </Button>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                This replaces the per-employee week-off field. Planned week-offs are never recalled;
+                shortages are reported instead.
+              </p>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <div>

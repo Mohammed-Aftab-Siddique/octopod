@@ -43,3 +43,11 @@ class HolidayOut(BaseModel):
     id: int
     date: date
     label: str
+
+
+class RosterSettingsOut(BaseModel):
+    consecutive_off_days: int
+
+
+class RosterSettingsUpdate(BaseModel):
+    consecutive_off_days: int = Field(ge=1, le=6)

@@ -10,29 +10,31 @@ The availability form accepts a date range, including past dates within the
 current month, so leave can be entered whenever it becomes known. Overlapping
 ranges update existing entries rather than creating duplicates.
 
-## 2. Fixed shifts with chosen consecutive week-offs
+## 2. Stable shifts with a global consecutive week-off policy
 
 Employees hold a **primary shift** for the roster period rather than rotating
 through every shift each day. The shift is `default_shift` when set; otherwise
 it is derived from `rotation_offset` (`working_shifts[offset % count]`) so a
-new team is balanced automatically.
+new team is balanced automatically. A period-level allocation moves employees
+between shifts only when the preferred shift mix cannot cover demand, so
+explicit preferences stay stable across the month.
 
-Week-offs are configured per employee. Administrators choose the first of two
-consecutive days off (`week_off_start_day`, ISO weekday where `0` is Monday).
-The same pair repeats every week and is added to each generated draft. When an
-employee is created without an explicit pair, the start day defaults to
-`rotation_offset % 7` so a new team starts staggered. Week-offs are no longer
+Week-off length is a **global setting**, not an employee field: administrators
+choose the exact number of consecutive days off (`consecutive_off_days`, 1–6).
+Each employee's block repeats every week. Start days are staggered
+automatically from `rotation_offset % 7`, so the team is not all off at once;
+the value is stored internally as `week_off_start_day`. Week-offs are not
 recorded as availability; that picker only covers leave, comp-off, and
 unavailable dates.
 
 Staffing requirements are the correction layer: when a shift is over-staffed
 they can add a day off, and they can move an employee to another shift. A
-planned week-off pair is never recalled. When requirements ask for more people
+planned week-off block is never recalled. When requirements ask for more people
 than are available after leave, comp-off, unavailable dates, and week-offs, the
 gap is reported as a shortage for the administrator to resolve. Fairness
 counters keep corrections deterministic and balanced. This matches the
 business roster: a person stays in their shift for the month, keeps their
-chosen week-offs, and moves only for coverage.
+week-off block, and moves only for coverage.
 
 ## 3. Holidays are per-month and use the `H` code
 

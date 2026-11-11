@@ -288,6 +288,26 @@ export function AdminRosterPage() {
       />
       <RosterLegend statuses={grid.statuses} />
 
+      <Card className="mt-4 border-destructive/30">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <p className="font-medium text-destructive">Delete this roster</p>
+            <p className="text-sm text-muted-foreground">
+              Permanently remove version {grid.version}, its assignments, and its generation
+              history. This cannot be undone.
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            onClick={() => setConfirmAction("delete")}
+            disabled={deleteMutation.isPending}
+          >
+            <Trash2 className="h-4 w-4" />
+            {deleteMutation.isPending ? "Deleting…" : "Delete roster"}
+          </Button>
+        </CardContent>
+      </Card>
+
       {picker ? (
         <StatusPicker
           open

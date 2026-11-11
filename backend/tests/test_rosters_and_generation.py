@@ -273,14 +273,17 @@ def test_generation_never_recalls_planned_week_off(client, seeded):
 
     # Put everyone off on the same weekend pair so coverage is impossible on
     # those days. The generator must keep the week-off and report a shortage
-    # instead of recalling anybody.
-    for employee_id, _ in seeded["employees"]:
-        updated = client.patch(
-            f"/api/v1/employees/{employee_id}",
-            headers=headers,
-            json={"week_off_start_day": 5},
-        )
-        assert updated.status_code == 200, updated.text
+    # instead of recalling anybody. Start days are internal now, so set them
+    # directly instead of going through the employee API.
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models.employee import Employee
+
+    with get_sessionmaker()() as db:
+        for employee in db.scalars(select(Employee)):
+            employee.week_off_start_day = 5
+        db.commit()
 
     generated = client.post(f"/api/v1/rosters/{roster['id']}/generate", headers=headers)
     assert generated.status_code == 200, generated.text
@@ -339,11 +342,10 @@ def test_fixed_shift_is_used_and_validated(client, seeded):
         response = client.patch(
             f"/api/v1/employees/{employee_id}",
             headers=headers,
-            json={"default_shift": "G", "week_off_start_day": 5},
+            json={"default_shift": "G"},
         )
         assert response.status_code == 200, response.text
         assert response.json()["default_shift"] == "G"
-        assert response.json()["week_off_start_day"] == 5
 
     requirements = [
         {"weekday": weekday, "status_code": "G", "required_count": 4} for weekday in range(7)
@@ -369,26 +371,86 @@ def test_fixed_shift_is_used_and_validated(client, seeded):
     assert set(days_off) == {employee_id for employee_id, _ in seeded["employees"]}
 
 
-def test_generation_uses_each_employees_consecutive_week_off_pair(client, seeded):
+def test_shift_preferences_stay_stable_across_the_period():
+    from app.services.generation import (
+        GenerationEmployee,
+        GenerationInputs,
+        GenerationStatus,
+        compute_roster,
+    )
+
+    statuses = [
+        GenerationStatus(code=code, is_working=code in {"G", "M", "A", "N"}, sort_order=order)
+        for order, code in enumerate(["G", "M", "A", "N", "L", "CO", "O", "H"], start=1)
+    ]
+    employees = [
+        GenerationEmployee(
+            id=index,
+            rotation_offset=index - 1,
+            default_shift=("G", "M", "A", "N")[(index - 1) % 4],
+            week_off_start_day=(index - 1) % 7,
+        )
+        for index in range(1, 13)
+    ]
+    requirements = {weekday: {code: 1 for code in ("G", "M", "A", "N")} for weekday in range(7)}
+    rows, shortages, _ = compute_roster(
+        GenerationInputs(
+            year=2026,
+            month=11,
+            employees=employees,
+            statuses=statuses,
+            requirements=requirements,
+            consecutive_off_days=2,
+        )
+    )
+
+    assert shortages == []
+    by_employee: dict[int, Counter] = {}
+    for row in rows:
+        by_employee.setdefault(row["employee_id"], Counter())[row["status_code"]] += 1
+
+    for employee in employees:
+        worked = {
+            code: count
+            for code, count in by_employee[employee.id].items()
+            if code in {"G", "M", "A", "N"}
+        }
+        # An explicit preference is not rotated through other shifts.
+        assert set(worked) == {employee.default_shift}
+
+
+def test_generation_uses_global_consecutive_week_off_policy(client, seeded):
     headers = login_headers(client, "admin@test.local", "Admin123!")
+
+    initial = client.get("/api/v1/reference/roster-settings", headers=headers)
+    assert initial.status_code == 200
+    assert initial.json() == {"consecutive_off_days": 2}
+
+    saved = client.put(
+        "/api/v1/reference/roster-settings",
+        headers=headers,
+        json={"consecutive_off_days": 3},
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json() == {"consecutive_off_days": 3}
+
     roster = _create_roster(client, headers)
 
-    start_days: dict[int, int] = {}
-    for index, (employee_id, _) in enumerate(seeded["employees"]):
-        start_day = index % 7
-        start_days[employee_id] = start_day
-        updated = client.patch(
-            f"/api/v1/employees/{employee_id}",
-            headers=headers,
-            json={"week_off_start_day": start_day},
-        )
-        assert updated.status_code == 200, updated.text
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models.employee import Employee
+
+    with get_sessionmaker()() as db:
+        start_days = {
+            employee.id: employee.week_off_start_day for employee in db.scalars(select(Employee))
+        }
 
     # Require exactly the number of people who are not on their planned
     # week-off, so the generator adds no extra days off and recalls nobody.
     requirements = []
     for weekday in range(7):
-        off = sum(1 for start in start_days.values() if (weekday - start) % 7 < 2)
+        off = sum(1 for start in start_days.values() if (weekday - start) % 7 < 3)
         requirements.append(
             {
                 "weekday": weekday,
@@ -396,12 +458,12 @@ def test_generation_uses_each_employees_consecutive_week_off_pair(client, seeded
                 "required_count": len(start_days) - off,
             }
         )
-    saved = client.put(
+    response = client.put(
         "/api/v1/reference/staffing-requirements",
         headers=headers,
         json={"requirements": requirements},
     )
-    assert saved.status_code == 200, saved.text
+    assert response.status_code == 200, response.text
 
     generated = client.post(f"/api/v1/rosters/{roster['id']}/generate", headers=headers)
     assert generated.status_code == 200, generated.text
@@ -409,5 +471,5 @@ def test_generation_uses_each_employees_consecutive_week_off_pair(client, seeded
 
     for item in assignments:
         weekday = date.fromisoformat(item["date"]).weekday()
-        is_week_off = (weekday - start_days[item["employee_id"]]) % 7 < 2
+        is_week_off = (weekday - start_days[item["employee_id"]]) % 7 < 3
         assert item["status_code"] == ("O" if is_week_off else "G")

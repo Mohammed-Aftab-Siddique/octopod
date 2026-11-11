@@ -11,6 +11,7 @@ import type {
   LoginResponse,
   MeResponse,
   RosterGrid,
+  RosterSettings,
   RosterSummary,
   ShiftStatus,
   StaffingRequirement,
@@ -21,7 +22,6 @@ export interface EmployeeInput {
   full_name: string;
   email: string;
   default_shift?: string | null;
-  week_off_start_day?: number;
   password?: string;
 }
 
@@ -65,6 +65,11 @@ export const referenceApi = {
     api.get<StaffingRequirement[]>("/reference/staffing-requirements"),
   saveRequirements: (requirements: StaffingRequirement[]) =>
     api.put<StaffingRequirement[]>("/reference/staffing-requirements", { requirements }),
+  getRosterSettings: () => api.get<RosterSettings>("/reference/roster-settings"),
+  saveRosterSettings: (consecutiveOffDays: number) =>
+    api.put<RosterSettings>("/reference/roster-settings", {
+      consecutive_off_days: consecutiveOffDays,
+    }),
   listHolidays: (year: number, month: number) =>
     api.get<Holiday[]>(`/reference/holidays?year=${year}&month=${month}`),
   createHoliday: (date: string, label: string) =>

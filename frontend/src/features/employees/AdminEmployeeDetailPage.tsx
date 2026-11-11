@@ -19,7 +19,7 @@ import { Select } from "@/components/ui/select";
 import { availabilitySchema, type AvailabilityForm } from "@/features/employees/availabilitySchema";
 import { formatDateOnly } from "@/lib/dates";
 import type { AvailabilityKind } from "@/lib/types";
-import { todayIso, weekOffPairLabel } from "@/lib/utils";
+import { todayIso } from "@/lib/utils";
 
 const KIND_LABELS: Record<AvailabilityKind, string> = {
   leave: "Leave",
@@ -100,7 +100,7 @@ export function AdminEmployeeDetailPage() {
         title={employee?.full_name ?? "Employee"}
         description={
           employee
-            ? `${employee.employee_code} · ${employee.email} · ${employee.default_shift ?? "auto"} shift · week-off ${weekOffPairLabel(employee.week_off_start_day)} · rotation offset ${employee.rotation_offset}`
+            ? `${employee.employee_code} · ${employee.email} · ${employee.default_shift ?? "auto"} shift · rotation offset ${employee.rotation_offset}`
             : "Loading employee details…"
         }
         actions={
@@ -120,7 +120,7 @@ export function AdminEmployeeDetailPage() {
             <CardTitle>Add availability</CardTitle>
             <CardDescription>
               Leave is pre-approved. Record ranges for any dates in the month, including past
-              dates. Week-offs are configured on the employee record.
+              dates. Week-offs follow the global policy in Settings.
             </CardDescription>
           </CardHeader>
           <CardContent>

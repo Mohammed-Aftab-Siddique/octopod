@@ -21,15 +21,15 @@ standards, [`SOP.md`](./SOP.md) for the user guide, and
 - Approved leave, comp-off, and unavailable dates (date ranges).
 - Monthly roster drafts rendered as an employee × date grid with sticky headers.
 - Seven statuses plus a holiday `H` code, all colour-coded with a legend.
-- Assisted generation with a fixed primary shift per employee, chosen
-  consecutive week-offs, staffing requirements, leave exclusion, and shortage
-  reporting.
+- Assisted generation with a stable primary shift per employee, a global
+  consecutive week-off policy, staffing requirements, leave exclusion, and
+  shortage reporting.
 - Explicit publish approval, immutable published versions, and archived history.
 - Employee self-view (own row by default) and full-team read-only view.
 - PNG export rendered client-side (month, dates, names, statuses, and legend).
 - PWA manifest and service worker (installable; offline editing is out of scope).
-- Per-employee primary shift and consecutive week-off pair; holidays configured
-  per month.
+- Per-employee primary shift plus an organisation-wide consecutive week-off
+  policy; holidays configured per month.
 
 ## Quick start (Linux / macOS)
 
@@ -169,13 +169,16 @@ Generation is deterministic backend logic (no external optimiser):
 1. Active employees are filtered against approved leave, comp-off, and
    unavailable dates.
 2. Holidays receive the `H` status for everyone.
-3. Each employee keeps a fixed primary shift for the month (`default_shift`,
-   or a balanced shift derived from `rotation_offset`). Their two consecutive
-   week-off days come from `week_off_start_day` in the employee record.
+3. Each employee keeps a stable primary shift for the month (`default_shift`,
+   or a balanced shift derived from `rotation_offset`). A period-level
+   allocation only moves employees between shifts when the preferred mix cannot
+   cover demand, so explicit preferences stay stable. Week-off blocks use the
+   global **Consecutive days off** setting in Settings; start days are staggered
+   automatically from the rotation offset.
 4. Staffing requirements for the weekday drive coverage. The generator can add
    a day off and move employees to another shift when the fixed-shift mix cannot
    cover it, while tracking fairness counters. It never recalls an employee from
-   their planned week-off pair.
+   their planned week-off block.
 5. Shortages are returned for administrator review when requirements exceed the
    people available after leave, comp-off, unavailable dates, and week-offs.
    Generated rosters are always drafts and require explicit publish approval.
@@ -195,6 +198,7 @@ All endpoints are under `/api/v1`.
   `DELETE /employees/{id}/availability/{availability_id}`
 - `GET /reference/shift-statuses`
 - `GET|PUT /reference/staffing-requirements`
+- `GET|PUT /reference/roster-settings`
 - `GET|POST /reference/holidays`, `DELETE /reference/holidays/{id}`
 - `GET|POST /rosters`, `GET|DELETE /rosters/{id}`,
   `PATCH /rosters/{id}/assignments`, `POST /rosters/{id}/generate`,

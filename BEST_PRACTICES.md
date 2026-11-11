@@ -332,8 +332,8 @@ the change.
 - Keep tests independent and deterministic. Do not rely on execution order or
   shared mutable state.
 - Cover the domain rules directly, not only through HTTP:
-  - generation excludes leave, comp-off, and unavailable dates, and applies
-    each employee's chosen consecutive week-off pair;
+  - generation excludes leave, comp-off, and unavailable dates, and applies the
+    global exact consecutive-off-days policy without recalling a week-off;
   - no employee has two statuses on the same day;
   - holidays apply to everyone;
   - staffing shortages are reported;
@@ -485,8 +485,8 @@ The MVP is complete when all of the following are true:
 - [ ] An administrator can create, edit, and deactivate employees.
 - [ ] Employee codes are unique, and public lookup shows only the matching name
       and never grants access.
-- [ ] Administrators can record leave, comp-off, and unavailable dates, and
-      choose each employee's consecutive week-off days.
+- [ ] Administrators can record leave, comp-off, and unavailable dates, and set
+      one global exact consecutive-off-days policy.
 - [ ] An administrator can create a month, generate a draft, review shortages,
       edit any cell, and publish only with explicit confirmation.
 - [ ] Published rosters are immutable, versioned, and visible to employees;

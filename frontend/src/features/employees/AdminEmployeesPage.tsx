@@ -25,7 +25,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
-import { WEEK_OFF_OPTIONS, weekOffPairLabel } from "@/lib/utils";
 
 const employeeSchema = z.object({
   employee_code: z
@@ -36,7 +35,6 @@ const employeeSchema = z.object({
   full_name: z.string().min(1, "Name is required").max(120),
   email: z.string().email("Enter a valid email"),
   default_shift: z.string(),
-  week_off_start_day: z.number().int().min(0).max(6),
   password: z.string().min(8, "Use at least 8 characters").optional().or(z.literal("")),
 });
 
@@ -74,7 +72,6 @@ export function AdminEmployeesPage() {
       full_name: "",
       email: "",
       default_shift: "",
-      week_off_start_day: 0,
       password: "",
     },
   });
@@ -92,7 +89,6 @@ export function AdminEmployeesPage() {
         full_name: editing.full_name,
         email: editing.email,
         default_shift: editing.default_shift ?? "",
-        week_off_start_day: editing.week_off_start_day,
         password: "",
       });
     } else {
@@ -101,7 +97,6 @@ export function AdminEmployeesPage() {
         full_name: "",
         email: "",
         default_shift: "",
-        week_off_start_day: 0,
         password: "",
       });
     }
@@ -114,7 +109,6 @@ export function AdminEmployeesPage() {
         full_name: values.full_name.trim(),
         email: values.email.trim(),
         default_shift: values.default_shift || null,
-        week_off_start_day: values.week_off_start_day,
         ...(values.password ? { password: values.password } : {}),
       };
       return editing
@@ -204,7 +198,7 @@ export function AdminEmployeesPage() {
                 <tr className="border-b bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th scope="col" className="px-4 py-3 font-medium">Employee</th>
                   <th scope="col" className="px-4 py-3 font-medium">Email</th>
-                  <th scope="col" className="px-4 py-3 font-medium">Shift / off</th>
+                  <th scope="col" className="px-4 py-3 font-medium">Primary shift</th>
                   <th scope="col" className="px-4 py-3 font-medium">Status</th>
                   <th scope="col" className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
@@ -238,7 +232,7 @@ export function AdminEmployeesPage() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.email}</td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {employee.default_shift ?? "Auto"} · {weekOffPairLabel(employee.week_off_start_day)}
+                        {employee.default_shift ?? "Auto (balanced)"}
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant={employee.is_active ? "success" : "muted"}>
@@ -322,43 +316,20 @@ export function AdminEmployeesPage() {
                 <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>
               ) : null}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="default_shift">Primary shift</Label>
-                <Select id="default_shift" {...form.register("default_shift")}>
-                  <option value="">Auto (balanced)</option>
-                  {workingStatuses.map((status) => (
-                    <option key={status.code} value={status.code}>
-                      {status.code} — {status.label}
-                    </option>
-                  ))}
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Employees keep this shift all month; coverage needs can move them.
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="week_off_start_day">Week-off days</Label>
-                <Select
-                  id="week_off_start_day"
-                  {...form.register("week_off_start_day", { valueAsNumber: true })}
-                >
-                  {WEEK_OFF_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-                {form.formState.errors.week_off_start_day ? (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.week_off_start_day.message}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Two consecutive days per week, added automatically to drafts.
-                  </p>
-                )}
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="default_shift">Primary shift</Label>
+              <Select id="default_shift" {...form.register("default_shift")}>
+                <option value="">Auto (balanced)</option>
+                {workingStatuses.map((status) => (
+                  <option key={status.code} value={status.code}>
+                    {status.code} — {status.label}
+                  </option>
+                ))}
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Employees keep this shift all month. Coverage needs can move them to another shift
+                when their shift is over-subscribed. Week-off length is configured in Settings.
+              </p>
             </div>
             {!editing ? (
               <div className="space-y-1.5">

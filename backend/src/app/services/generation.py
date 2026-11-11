@@ -2,15 +2,21 @@
 
 Every employee holds a **fixed shift** for the roster period (their
 ``default_shift``, or a balanced shift derived from ``rotation_offset`` when it
-is unset). Week-offs are the employee's chosen pair of consecutive weekdays
-(``week_off_start_day`` and the following day).
+is unset). A period-level allocation moves employees between shifts only when
+the preferred shift mix cannot cover the configured demand, so people stay on
+one shift instead of rotating every day.
+
+Week-offs use the organisation-wide ``consecutive_off_days`` policy (exactly
+that many consecutive weekdays each week). Each employee's block starts at
+``week_off_start_day``, which is staggered automatically from the rotation
+offset and is no longer edited per employee.
 
 Staffing requirements are the correction layer. They can add an extra day off
 and they move employees between shifts when the fixed-shift mix does not cover
-a shift. An employee's planned week-off pair is never recalled: if requirements
-ask for more people than are available, the gap is reported as a shortage so
-the administrator can adjust staffing or the week-off configuration. Fairness
-counters keep these corrections deterministic and balanced.
+a shift. An employee's planned week-off block is never recalled: if
+requirements ask for more people than are available, the gap is reported as a
+shortage so the administrator can adjust staffing or the global week-off
+policy. Fairness counters keep these corrections deterministic and balanced.
 
 The implementation is intentionally a straightforward heuristic rather than an
 optimiser. It is deterministic for identical inputs and reports shortages
@@ -21,7 +27,7 @@ step can be moved to the ``Generator`` Durable Object if the Worker CPU budget
 requires it.
 """
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, TypedDict
@@ -33,6 +39,7 @@ from app.models.availability import Availability, AvailabilityKind
 from app.models.employee import Employee
 from app.models.reference import Holiday, ShiftStatus, StaffingRequirement
 from app.models.roster import RosterPeriod
+from app.services.reference import get_consecutive_off_days
 from app.services.rosters import month_bounds
 
 LEAVE_CODE = "L"
@@ -78,6 +85,7 @@ class GenerationInputs:
     requirements: dict[int, dict[str, int]] = field(default_factory=dict)
     availability: dict[tuple[int, date], str] = field(default_factory=dict)
     holidays: dict[date, str] = field(default_factory=dict)
+    consecutive_off_days: int = 2
 
     @property
     def bounds(self) -> tuple[date, date]:
@@ -137,6 +145,7 @@ def load_generation_inputs(db: Session, period: RosterPeriod) -> GenerationInput
         requirements=_load_requirements(db),
         availability=availability,
         holidays=holidays,
+        consecutive_off_days=get_consecutive_off_days(db),
     )
 
 
@@ -171,6 +180,7 @@ def inputs_to_payload(inputs: GenerationInputs) -> dict[str, Any]:
         "holidays": [
             {"date": day.isoformat(), "label": label} for day, label in inputs.holidays.items()
         ],
+        "consecutive_off_days": inputs.consecutive_off_days,
     }
 
 
@@ -209,6 +219,7 @@ def inputs_from_payload(payload: dict[str, Any]) -> GenerationInputs:
             date.fromisoformat(item["date"]): str(item["label"])
             for item in payload.get("holidays", [])
         },
+        consecutive_off_days=int(payload.get("consecutive_off_days", 2)),
     )
 
 
@@ -230,10 +241,82 @@ def _fixed_shift(employee: GenerationEmployee, working_codes: list[str]) -> str:
     return working_codes[employee.rotation_offset % len(working_codes)]
 
 
-def _prefers_day_off(employee: GenerationEmployee, current: date) -> bool:
-    """Whether ``current`` falls in the employee's two consecutive week-off days."""
+def _is_week_off(employee: GenerationEmployee, current: date, consecutive_off_days: int) -> bool:
+    """Whether ``current`` falls in the employee's consecutive week-off block."""
 
-    return (current.weekday() - employee.week_off_start_day) % 7 < 2
+    return (current.weekday() - employee.week_off_start_day) % 7 < consecutive_off_days
+
+
+def _period_targets(
+    requirements: dict[int, dict[str, int]],
+    working_codes: list[str],
+    employee_count: int,
+) -> dict[str, int]:
+    """Allocate employee headcount to shifts in proportion to weekly demand."""
+
+    demand = {
+        code: sum(requirements.get(weekday, {}).get(code, 0) for weekday in range(7))
+        for code in working_codes
+    }
+    total = sum(demand.values())
+    if total <= 0 or employee_count <= 0:
+        return {}
+
+    raw = {code: demand[code] * employee_count / total for code in working_codes}
+    targets = {code: int(raw[code]) for code in working_codes}
+    remaining = employee_count - sum(targets.values())
+    order = sorted(
+        working_codes,
+        key=lambda code: (-(raw[code] - targets[code]), working_codes.index(code)),
+    )
+    for index in range(remaining):
+        targets[order[index % len(order)]] += 1
+    return targets
+
+
+def _assign_base_shifts(
+    employees: list[GenerationEmployee],
+    working_codes: list[str],
+    requirements: dict[int, dict[str, int]],
+) -> dict[int, str]:
+    """Pick one shift per employee for the whole period.
+
+    Employees start on their preferred shift. When that shift is over-supplied
+    relative to the period demand, auto-assigned employees are moved first so
+    explicit shift preferences survive wherever coverage allows.
+    """
+
+    preferred = {employee.id: _fixed_shift(employee, working_codes) for employee in employees}
+    if not requirements or not employees:
+        return preferred
+
+    targets = _period_targets(requirements, working_codes, len(employees))
+    if not targets:
+        return preferred
+
+    base = dict(preferred)
+    counts = Counter(base.values())
+    for deficit in working_codes:
+        while counts[deficit] < targets[deficit]:
+            candidates = [
+                employee
+                for employee in employees
+                if counts[base[employee.id]] > targets[base[employee.id]]
+            ]
+            if not candidates:
+                break
+            mover = min(
+                candidates,
+                key=lambda employee: (
+                    employee.default_shift is not None,
+                    employee.rotation_offset,
+                    employee.id,
+                ),
+            )
+            counts[base[mover.id]] -= 1
+            base[mover.id] = deficit
+            counts[deficit] += 1
+    return base
 
 
 def compute_roster(
@@ -269,11 +352,13 @@ def compute_roster(
     availability = inputs.availability
     holidays = inputs.holidays
 
-    shift_counts: dict[int, dict[str, int]] = {
-        employee.id: defaultdict(int) for employee in employees
-    }
-    work_counts: dict[int, int] = {employee.id: 0 for employee in employees}
     off_counts: dict[int, int] = {employee.id: 0 for employee in employees}
+    move_counts: dict[int, int] = {employee.id: 0 for employee in employees}
+
+    # One stable shift per employee for the period. Employees are only moved
+    # between shifts when their preferred shift is over-subscribed.
+    base_shift = _assign_base_shifts(employees, working_codes, configured)
+    consecutive_off_days = min(max(inputs.consecutive_off_days, 1), 6)
 
     rows: list[AssignmentRow] = []
     shortages: list[ShortageRow] = []
@@ -317,66 +402,80 @@ def compute_roster(
             required = _default_requirements(working_codes, len(employees))
         else:
             required = dict(configured.get(current.weekday(), {}))
-        required = {code: count for code, count in required.items() if count > 0}
-
-        # Fixed shift for the period; days off come from the weekly block.
-        preferred = {employee.id: _fixed_shift(employee, working_codes) for employee in eligible}
-
-        off: set[int] = {
-            employee.id for employee in eligible if _prefers_day_off(employee, current)
+        required = {
+            code: count for code, count in required.items() if count > 0 and code in working_codes
         }
-        pool: list[GenerationEmployee] = [
-            employee for employee in eligible if employee.id not in off
-        ]
-        required_total = sum(required.values())
 
-        # Too many people available: add days off, preferring employees who
-        # have had the fewest so far.
-        while required_total > 0 and len(pool) > required_total:
-            candidate = min(
-                pool,
-                key=lambda employee: (
-                    off_counts[employee.id],
-                    employee.rotation_offset,
-                    employee.id,
-                ),
-            )
-            pool.remove(candidate)
-            off.add(candidate.id)
+        week_off = {
+            employee.id
+            for employee in eligible
+            if _is_week_off(employee, current, consecutive_off_days)
+        }
+        pool = [employee for employee in eligible if employee.id not in week_off]
 
-        # Too few people available: keep the planned week-off pair intact. The
-        # shortfall is reported below as a shortage instead of recalling an
-        # employee from their configured days off.
+        by_base: dict[str, list[GenerationEmployee]] = defaultdict(list)
+        for employee in pool:
+            by_base[base_shift[employee.id]].append(employee)
 
         assignments: dict[int, str] = {}
-        unassigned = sorted(pool, key=lambda employee: employee.id)
+        off: set[int] = set(week_off)
+        shortfall: dict[str, int] = {}
 
+        # Give each shift the people whose base shift matches it. When a shift
+        # has more people than needed, the people with the most days off so far
+        # work first so off days stay balanced.
         for code in working_codes:
             need = required.get(code, 0)
-            if need <= 0:
-                continue
-            candidates = sorted(
-                unassigned,
+            group = by_base.get(code, [])
+            group.sort(
                 key=lambda employee: (
-                    preferred[employee.id] != code,
-                    shift_counts[employee.id][code],
-                    work_counts[employee.id],
+                    -off_counts[employee.id],
+                    move_counts[employee.id],
                     employee.rotation_offset,
                     employee.id,
-                ),
+                )
             )
-            for employee in candidates[:need]:
+            for employee in group[:need]:
                 assignments[employee.id] = code
-                shift_counts[employee.id][code] += 1
-                work_counts[employee.id] += 1
-            unassigned = [employee for employee in unassigned if employee.id not in assignments]
+            for employee in group[need:]:
+                off.add(employee.id)
+            if len(group) < need:
+                shortfall[code] = need - len(group)
 
-        # Any remaining available employees work their fixed shift.
-        for employee in unassigned:
-            code = preferred[employee.id]
-            assignments[employee.id] = code
-            shift_counts[employee.id][code] += 1
-            work_counts[employee.id] += 1
+        # Cover deficits with available people whose own shift has a surplus.
+        # Planned week-offs are never used as cover.
+        for code in working_codes:
+            deficit = shortfall.get(code, 0)
+            while deficit > 0:
+                candidates = [
+                    employee
+                    for employee in pool
+                    if employee.id in off and employee.id not in week_off
+                ]
+                if not candidates:
+                    break
+
+                def _cover_rank(
+                    employee: GenerationEmployee,
+                    by_base: dict[str, list[GenerationEmployee]] = by_base,
+                    required: dict[str, int] = required,
+                ) -> tuple:
+                    base_code = base_shift[employee.id]
+                    surplus = len(by_base.get(base_code, [])) - required.get(base_code, 0)
+                    return (
+                        surplus <= 0,
+                        -surplus,
+                        -off_counts[employee.id],
+                        move_counts[employee.id],
+                        employee.rotation_offset,
+                        employee.id,
+                    )
+
+                mover = min(candidates, key=_cover_rank)
+                off.discard(mover.id)
+                assignments[mover.id] = code
+                move_counts[mover.id] += 1
+                deficit -= 1
 
         for code, need in required.items():
             assigned = sum(1 for value in assignments.values() if value == code)

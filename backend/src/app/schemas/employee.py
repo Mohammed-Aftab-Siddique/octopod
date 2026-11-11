@@ -25,7 +25,6 @@ class EmployeeCreate(BaseModel):
     email: EmailStr
     rotation_offset: int | None = Field(default=None, ge=0)
     default_shift: ShiftCode = None
-    week_off_start_day: int | None = Field(default=None, ge=0, le=6)
     password: str | None = Field(default=None, min_length=8, max_length=200)
 
 
@@ -35,7 +34,6 @@ class EmployeeUpdate(BaseModel):
     email: EmailStr | None = None
     rotation_offset: int | None = Field(default=None, ge=0)
     default_shift: ShiftCode = None
-    week_off_start_day: int | None = Field(default=None, ge=0, le=6)
     is_active: bool | None = None
 
 
@@ -49,7 +47,6 @@ class EmployeeOut(BaseModel):
     is_active: bool
     rotation_offset: int
     default_shift: str | None
-    week_off_start_day: int
     created_at: UTCDateTime
 
 
