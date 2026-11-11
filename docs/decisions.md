@@ -10,7 +10,7 @@ The availability form accepts a date range, including past dates within the
 current month, so leave can be entered whenever it becomes known. Overlapping
 ranges update existing entries rather than creating duplicates.
 
-## 2. Stable shifts with a global consecutive week-off policy
+## 2. Stable shifts with an employee week-off block
 
 Employees hold a **primary shift** for the roster period rather than rotating
 through every shift each day. The shift is `default_shift` when set; otherwise
@@ -19,12 +19,13 @@ new team is balanced automatically. A period-level allocation moves employees
 between shifts only when the preferred shift mix cannot cover demand, so
 explicit preferences stay stable across the month.
 
-Week-off length is a **global setting**, not an employee field: administrators
-choose the exact number of consecutive days off (`consecutive_off_days`, 1–6).
-Each employee's block repeats every week. Start days are staggered
-automatically from `rotation_offset % 7`, so the team is not all off at once;
-the value is stored internally as `week_off_start_day`. Week-offs are not
-recorded as availability; that picker only covers leave, comp-off, and
+Week-offs are a **per-employee choice**: each person selects two consecutive
+days off (for example Saturday–Sunday or Monday–Tuesday) on the employee form.
+The start day is stored as `week_off_start_day` using ISO weekdays (0 = Monday
+… 6 = Sunday), and the block repeats every week. New employees default to
+Saturday–Sunday when no choice is supplied; the API also derives a staggered
+start from the rotation offset if the field is omitted entirely. Week-offs are
+not recorded as availability; that picker only covers leave, comp-off, and
 unavailable dates.
 
 Staffing requirements are the correction layer: when a shift is over-staffed

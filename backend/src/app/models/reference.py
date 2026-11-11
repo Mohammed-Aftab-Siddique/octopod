@@ -38,15 +38,3 @@ class Holiday(Base):
     date: Mapped[date] = mapped_column(Date, unique=True, index=True)
     label: Mapped[str] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class AppSetting(Base):
-    """Small key/value store for organisation-wide roster policy."""
-
-    __tablename__ = "app_settings"
-
-    key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    value: Mapped[str] = mapped_column(String(255))
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
-    )

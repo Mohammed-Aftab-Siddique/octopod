@@ -1,6 +1,6 @@
 from app.models.availability import Availability, AvailabilityKind
 from app.models.employee import Employee
-from app.models.reference import AppSetting, Holiday, ShiftStatus, StaffingRequirement
+from app.models.reference import Holiday, ShiftStatus, StaffingRequirement
 from app.models.roster import (
     GenerationRun,
     RosterAssignment,
@@ -10,7 +10,6 @@ from app.models.roster import (
 from app.models.user import Role, User, UserSession
 
 __all__ = [
-    "AppSetting",
     "Availability",
     "AvailabilityKind",
     "Employee",

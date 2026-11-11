@@ -189,14 +189,6 @@ export function AdminRosterPage() {
                 </Button>
               </>
             ) : null}
-            <Button
-              variant="destructive"
-              onClick={() => setConfirmAction("delete")}
-              disabled={deleteMutation.isPending}
-            >
-              <Trash2 className="h-4 w-4" />
-              {deleteMutation.isPending ? "Deleting…" : "Delete"}
-            </Button>
           </>
         }
       />

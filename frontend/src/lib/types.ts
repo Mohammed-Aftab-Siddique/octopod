@@ -27,6 +27,7 @@ export interface Employee {
   is_active: boolean;
   rotation_offset: number;
   default_shift: string | null;
+  week_off_start_day: number;
   created_at: string;
 }
 
@@ -121,10 +122,6 @@ export interface StaffingRequirement {
   weekday: number;
   status_code: string;
   required_count: number;
-}
-
-export interface RosterSettings {
-  consecutive_off_days: number;
 }
 
 export interface Holiday {

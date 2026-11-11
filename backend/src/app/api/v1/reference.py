@@ -8,8 +8,6 @@ from app.models.reference import Holiday, ShiftStatus
 from app.schemas.reference import (
     HolidayCreate,
     HolidayOut,
-    RosterSettingsOut,
-    RosterSettingsUpdate,
     ShiftStatusOut,
     StaffingRequirementOut,
     StaffingRequirementsPut,
@@ -17,22 +15,6 @@ from app.schemas.reference import (
 from app.services import reference as service
 
 router = APIRouter(prefix="/reference", tags=["reference"])
-
-
-@router.get("/roster-settings", response_model=RosterSettingsOut)
-async def get_roster_settings(db: DbSession, admin: AdminUser) -> RosterSettingsOut:
-    return service.get_roster_settings(db)
-
-
-@router.put("/roster-settings", response_model=RosterSettingsOut)
-async def put_roster_settings(
-    payload: RosterSettingsUpdate,
-    request: Request,
-    db: DbSession,
-    admin: AdminUser,
-    _csrf: Annotated[None, Depends(csrf_protect)],
-) -> RosterSettingsOut:
-    return await service.save_roster_settings(db, payload, env=request_env(request))
 
 
 @router.get("/shift-statuses", response_model=list[ShiftStatusOut])

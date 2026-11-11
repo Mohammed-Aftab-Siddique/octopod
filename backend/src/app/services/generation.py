@@ -6,17 +6,16 @@ is unset). A period-level allocation moves employees between shifts only when
 the preferred shift mix cannot cover the configured demand, so people stay on
 one shift instead of rotating every day.
 
-Week-offs use the organisation-wide ``consecutive_off_days`` policy (exactly
-that many consecutive weekdays each week). Each employee's block starts at
-``week_off_start_day``, which is staggered automatically from the rotation
-offset and is no longer edited per employee.
+Week-offs are per employee: each person gets the ``WEEK_OFF_DAYS`` consecutive
+weekdays starting at their configured ``week_off_start_day`` (for example
+Saturday–Sunday or Monday–Tuesday).
 
 Staffing requirements are the correction layer. They can add an extra day off
 and they move employees between shifts when the fixed-shift mix does not cover
 a shift. An employee's planned week-off block is never recalled: if
 requirements ask for more people than are available, the gap is reported as a
-shortage so the administrator can adjust staffing or the global week-off
-policy. Fairness counters keep these corrections deterministic and balanced.
+shortage so the administrator can adjust staffing or the employee week-offs.
+Fairness counters keep these corrections deterministic and balanced.
 
 The implementation is intentionally a straightforward heuristic rather than an
 optimiser. It is deterministic for identical inputs and reports shortages
@@ -39,9 +38,9 @@ from app.models.availability import Availability, AvailabilityKind
 from app.models.employee import Employee
 from app.models.reference import Holiday, ShiftStatus, StaffingRequirement
 from app.models.roster import RosterPeriod
-from app.services.reference import get_consecutive_off_days
 from app.services.rosters import month_bounds
 
+WEEK_OFF_DAYS = 2
 LEAVE_CODE = "L"
 COMP_OFF_CODE = "CO"
 OFF_CODE = "O"
@@ -85,7 +84,6 @@ class GenerationInputs:
     requirements: dict[int, dict[str, int]] = field(default_factory=dict)
     availability: dict[tuple[int, date], str] = field(default_factory=dict)
     holidays: dict[date, str] = field(default_factory=dict)
-    consecutive_off_days: int = 2
 
     @property
     def bounds(self) -> tuple[date, date]:
@@ -145,7 +143,6 @@ def load_generation_inputs(db: Session, period: RosterPeriod) -> GenerationInput
         requirements=_load_requirements(db),
         availability=availability,
         holidays=holidays,
-        consecutive_off_days=get_consecutive_off_days(db),
     )
 
 
@@ -180,7 +177,6 @@ def inputs_to_payload(inputs: GenerationInputs) -> dict[str, Any]:
         "holidays": [
             {"date": day.isoformat(), "label": label} for day, label in inputs.holidays.items()
         ],
-        "consecutive_off_days": inputs.consecutive_off_days,
     }
 
 
@@ -219,7 +215,6 @@ def inputs_from_payload(payload: dict[str, Any]) -> GenerationInputs:
             date.fromisoformat(item["date"]): str(item["label"])
             for item in payload.get("holidays", [])
         },
-        consecutive_off_days=int(payload.get("consecutive_off_days", 2)),
     )
 
 
@@ -241,10 +236,10 @@ def _fixed_shift(employee: GenerationEmployee, working_codes: list[str]) -> str:
     return working_codes[employee.rotation_offset % len(working_codes)]
 
 
-def _is_week_off(employee: GenerationEmployee, current: date, consecutive_off_days: int) -> bool:
+def _is_week_off(employee: GenerationEmployee, current: date) -> bool:
     """Whether ``current`` falls in the employee's consecutive week-off block."""
 
-    return (current.weekday() - employee.week_off_start_day) % 7 < consecutive_off_days
+    return (current.weekday() - employee.week_off_start_day) % 7 < WEEK_OFF_DAYS
 
 
 def _period_targets(
@@ -358,7 +353,6 @@ def compute_roster(
     # One stable shift per employee for the period. Employees are only moved
     # between shifts when their preferred shift is over-subscribed.
     base_shift = _assign_base_shifts(employees, working_codes, configured)
-    consecutive_off_days = min(max(inputs.consecutive_off_days, 1), 6)
 
     rows: list[AssignmentRow] = []
     shortages: list[ShortageRow] = []
@@ -406,11 +400,7 @@ def compute_roster(
             code: count for code, count in required.items() if count > 0 and code in working_codes
         }
 
-        week_off = {
-            employee.id
-            for employee in eligible
-            if _is_week_off(employee, current, consecutive_off_days)
-        }
+        week_off = {employee.id for employee in eligible if _is_week_off(employee, current)}
         pool = [employee for employee in eligible if employee.id not in week_off]
 
         by_base: dict[str, list[GenerationEmployee]] = defaultdict(list)

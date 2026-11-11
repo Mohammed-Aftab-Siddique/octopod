@@ -400,7 +400,6 @@ def test_shift_preferences_stay_stable_across_the_period():
             employees=employees,
             statuses=statuses,
             requirements=requirements,
-            consecutive_off_days=2,
         )
     )
 
@@ -419,20 +418,26 @@ def test_shift_preferences_stay_stable_across_the_period():
         assert set(worked) == {employee.default_shift}
 
 
-def test_generation_uses_global_consecutive_week_off_policy(client, seeded):
+def test_generation_uses_employee_week_off_pair(client, seeded):
     headers = login_headers(client, "admin@test.local", "Admin123!")
 
-    initial = client.get("/api/v1/reference/roster-settings", headers=headers)
-    assert initial.status_code == 200
-    assert initial.json() == {"consecutive_off_days": 2}
+    # Week-offs are chosen per employee again. Put everyone on Sat–Sun so the
+    # block is easy to verify.
+    for employee_id, _ in seeded["employees"]:
+        saved = client.patch(
+            f"/api/v1/employees/{employee_id}",
+            headers=headers,
+            json={"week_off_start_day": 5},
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["week_off_start_day"] == 5
 
-    saved = client.put(
-        "/api/v1/reference/roster-settings",
+    invalid = client.patch(
+        f"/api/v1/employees/{seeded['employees'][0][0]}",
         headers=headers,
-        json={"consecutive_off_days": 3},
+        json={"week_off_start_day": 7},
     )
-    assert saved.status_code == 200, saved.text
-    assert saved.json() == {"consecutive_off_days": 3}
+    assert invalid.status_code == 422
 
     roster = _create_roster(client, headers)
 
@@ -450,7 +455,7 @@ def test_generation_uses_global_consecutive_week_off_policy(client, seeded):
     # week-off, so the generator adds no extra days off and recalls nobody.
     requirements = []
     for weekday in range(7):
-        off = sum(1 for start in start_days.values() if (weekday - start) % 7 < 3)
+        off = sum(1 for start in start_days.values() if (weekday - start) % 7 < 2)
         requirements.append(
             {
                 "weekday": weekday,
@@ -471,5 +476,5 @@ def test_generation_uses_global_consecutive_week_off_policy(client, seeded):
 
     for item in assignments:
         weekday = date.fromisoformat(item["date"]).weekday()
-        is_week_off = (weekday - start_days[item["employee_id"]]) % 7 < 3
+        is_week_off = (weekday - start_days[item["employee_id"]]) % 7 < 2
         assert item["status_code"] == ("O" if is_week_off else "G")

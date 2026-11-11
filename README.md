@@ -198,7 +198,6 @@ All endpoints are under `/api/v1`.
   `DELETE /employees/{id}/availability/{availability_id}`
 - `GET /reference/shift-statuses`
 - `GET|PUT /reference/staffing-requirements`
-- `GET|PUT /reference/roster-settings`
 - `GET|POST /reference/holidays`, `DELETE /reference/holidays/{id}`
 - `GET|POST /rosters`, `GET|DELETE /rosters/{id}`,
   `PATCH /rosters/{id}/assignments`, `POST /rosters/{id}/generate`,

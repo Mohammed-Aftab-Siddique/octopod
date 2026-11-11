@@ -49,20 +49,6 @@ def test_employee_lookup_returns_only_public_fields(client, seeded):
     )
 
 
-def test_roster_settings_are_admin_only(client, seeded):
-    login_headers(client, "E001", "Employee123!")
-    assert client.get("/api/v1/reference/roster-settings").status_code == 403
-
-    login_headers(client, "admin@test.local", "Admin123!")
-    assert client.get("/api/v1/reference/roster-settings").status_code == 200
-    missing_csrf = client.put(
-        "/api/v1/reference/roster-settings",
-        json={"consecutive_off_days": 2},
-    )
-    assert missing_csrf.status_code == 403
-    assert "CSRF" in missing_csrf.json()["detail"]
-
-
 def test_login_by_employee_code(client, seeded):
     response = client.post(
         "/api/v1/auth/login", json={"identifier": "E002", "password": "Employee123!"}

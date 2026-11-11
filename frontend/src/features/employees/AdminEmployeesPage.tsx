@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Pencil, Plus, UserMinus, UserRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router-dom";
 import { z } from "zod";
@@ -24,7 +24,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import {
+  EMPLOYEE_SORT_OPTIONS,
+  sortEmployees,
+  type EmployeeSortKey,
+} from "@/lib/employeeSort";
 import type { Employee } from "@/lib/types";
+import { WEEK_OFF_OPTIONS } from "@/lib/weekOff";
 
 const employeeSchema = z.object({
   employee_code: z
@@ -35,6 +41,7 @@ const employeeSchema = z.object({
   full_name: z.string().min(1, "Name is required").max(120),
   email: z.string().email("Enter a valid email"),
   default_shift: z.string(),
+  week_off_start_day: z.coerce.number().int().min(0).max(6),
   password: z.string().min(8, "Use at least 8 characters").optional().or(z.literal("")),
 });
 
@@ -51,6 +58,7 @@ export function AdminEmployeesPage() {
   const [editing, setEditing] = useState<Employee | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(true);
+  const [sortKey, setSortKey] = useState<EmployeeSortKey>("name");
   const [deactivateTarget, setDeactivateTarget] = useState<Employee | null>(null);
   const [resetTarget, setResetTarget] = useState<Employee | null>(null);
 
@@ -72,6 +80,7 @@ export function AdminEmployeesPage() {
       full_name: "",
       email: "",
       default_shift: "",
+      week_off_start_day: 5,
       password: "",
     },
   });
@@ -89,6 +98,7 @@ export function AdminEmployeesPage() {
         full_name: editing.full_name,
         email: editing.email,
         default_shift: editing.default_shift ?? "",
+        week_off_start_day: editing.week_off_start_day,
         password: "",
       });
     } else {
@@ -97,6 +107,7 @@ export function AdminEmployeesPage() {
         full_name: "",
         email: "",
         default_shift: "",
+        week_off_start_day: 5,
         password: "",
       });
     }
@@ -109,6 +120,7 @@ export function AdminEmployeesPage() {
         full_name: values.full_name.trim(),
         email: values.email.trim(),
         default_shift: values.default_shift || null,
+        week_off_start_day: values.week_off_start_day,
         ...(values.password ? { password: values.password } : {}),
       };
       return editing
@@ -166,7 +178,10 @@ export function AdminEmployeesPage() {
     resetMutation.mutate({ id: resetTarget.id, password: values.password });
   });
 
-  const employees = employeesQuery.data ?? [];
+  const employees = useMemo(
+    () => sortEmployees(employeesQuery.data ?? [], sortKey),
+    [employeesQuery.data, sortKey],
+  );
 
   return (
     <div>
@@ -189,6 +204,25 @@ export function AdminEmployeesPage() {
       />
 
       <ErrorBanner message={error} />
+
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <label htmlFor="employee-sort" className="text-xs font-medium text-muted-foreground">
+          Sort by
+        </label>
+        <Select
+          id="employee-sort"
+          aria-label="Sort employees"
+          value={sortKey}
+          onChange={(event) => setSortKey(event.target.value as EmployeeSortKey)}
+          className="h-8 w-auto min-w-[170px] text-xs"
+        >
+          {EMPLOYEE_SORT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </div>
 
       <Card>
         <CardContent className="p-0">
@@ -328,7 +362,20 @@ export function AdminEmployeesPage() {
               </Select>
               <p className="text-xs text-muted-foreground">
                 Employees keep this shift all month. Coverage needs can move them to another shift
-                when their shift is over-subscribed. Week-off length is configured in Settings.
+                when their shift is over-subscribed.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="week_off_start_day">Week off</Label>
+              <Select id="week_off_start_day" {...form.register("week_off_start_day")}>
+                {WEEK_OFF_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Two consecutive days off each week. Generation never schedules work on these days.
               </p>
             </div>
             {!editing ? (
